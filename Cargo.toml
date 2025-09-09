@@ -10,18 +10,59 @@ keywords = ["background", "jobs", "queue", "postgresql", "async"]
 categories = ["asynchronous", "database"]
 
 [dependencies]
-anyhow = "=1.0.99"
-diesel = { version = "=2.2.12", features = ["postgres", "serde_json"] }
-diesel-async = { version = "=0.6.1", features = ["async-connection-wrapper", "deadpool", "postgres"] }
-futures-util = "=0.3.31"
-sentry-core = { version = "=0.42.0", features = ["client"] }
-serde = { version = "=1.0.219", features = ["derive"] }
-serde_json = "=1.0.143"
-thiserror = "=2.0.16"
-tokio = { version = "=1.47.1", features = ["rt", "time"]}
-tracing = "=0.1.41"
+anyhow = "1.0"
+diesel = { version = "2.2", features = ["postgres", "serde_json"] }
+diesel-async = { version = "0.6", features = ["async-connection-wrapper", "deadpool", "postgres"] }
+futures-util = "0.3"
+sentry-core = { version = "0.42", features = ["client"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1.47", features = ["rt", "time"] }
+tracing = "0.1"
 
 [dev-dependencies]
-claims = "=0.8.0"
-insta = { version = "=1.43.2", features = ["json"] }
-tokio = { version = "=1.47.1", features = ["macros", "sync"]}
+claims = "0.8"
+insta = { version = "1.43", features = ["json"] }
+tokio = { version = "1.47", features = ["macros", "sync"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+# Correctness lints
+all = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+
+# Style lints
+style = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+
+# Specific strict lints
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# Individual lints that are particularly important
+cargo_common_metadata = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+
+# Allow some pedantic lints that can be overly strict
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+return_self_not_must_use = "allow"
+missing_const_for_fn = "allow"
+option_if_let_else = "allow"
+ignored_unit_patterns = "allow"
+wildcard_imports = "allow"

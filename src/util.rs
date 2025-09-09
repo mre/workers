@@ -22,9 +22,10 @@ where
 
     let result = callback().await;
 
-    tx.set_status(match result.is_ok() {
-        true => sentry_core::protocol::SpanStatus::Ok,
-        false => sentry_core::protocol::SpanStatus::UnknownError,
+    tx.set_status(if result.is_ok() {
+        sentry_core::protocol::SpanStatus::Ok
+    } else {
+        sentry_core::protocol::SpanStatus::UnknownError
     });
     tx.finish();
 
@@ -38,13 +39,16 @@ where
 /// documented as "commonly but not always `&'static str` or `String`". So we can try all of those,
 /// and give up if we didn't get one of those three types.
 pub fn try_to_extract_panic_info(info: &(dyn Any + Send + 'static)) -> anyhow::Error {
-    if let Some(x) = info.downcast_ref::<PanicHookInfo<'_>>() {
-        anyhow!("job panicked: {x}")
-    } else if let Some(x) = info.downcast_ref::<&'static str>() {
-        anyhow!("job panicked: {x}")
-    } else if let Some(x) = info.downcast_ref::<String>() {
-        anyhow!("job panicked: {x}")
-    } else {
-        anyhow!("job panicked")
-    }
+    info.downcast_ref::<PanicHookInfo<'_>>().map_or_else(
+        || {
+            if let Some(x) = info.downcast_ref::<&'static str>() {
+                anyhow!("job panicked: {x}")
+            } else if let Some(x) = info.downcast_ref::<String>() {
+                anyhow!("job panicked: {x}")
+            } else {
+                anyhow!("job panicked")
+            }
+        },
+        |x| anyhow!("job panicked: {x}"),
+    )
 }

@@ -82,7 +82,7 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
                     AssertUnwindSafe(run_task_fn(context, job.data))
                         .catch_unwind()
                         .await
-                        .map_err(|e| try_to_extract_panic_info(&e))
+                        .map_err(|e| try_to_extract_panic_info(&*e))
                         // TODO: Replace with flatten() once that stabilizes
                         .and_then(std::convert::identity)
                 });
@@ -94,9 +94,9 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
 
                 let _enter = span.enter();
                 match result {
-                    Ok(_) => {
+                    Ok(()) => {
                         debug!("Deleting successful job…");
-                        storage::delete_successful_job(conn, job_id).await?
+                        storage::delete_successful_job(conn, job_id).await?;
                     }
                     Err(error) => {
                         warn!("Failed to run job: {error}");

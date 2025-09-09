@@ -14,6 +14,7 @@ use tracing::instrument;
 
 pub const DEFAULT_QUEUE: &str = "default";
 
+/// Trait for defining background jobs that can be enqueued and executed asynchronously.
 pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// Unique name of the task.
     ///
@@ -22,7 +23,7 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
 
     /// Default priority of the task.
     ///
-    /// [Self::enqueue_with_priority] can be used to override the priority value.
+    /// [`Self::enqueue_with_priority`] can be used to override the priority value.
     const PRIORITY: i16 = 0;
 
     /// Whether the job should be deduplicated.
@@ -40,6 +41,9 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// Execute the task. This method should define its logic.
     fn run(&self, ctx: Self::Context) -> impl Future<Output = anyhow::Result<()>> + Send;
 
+    /// Enqueue this job for background execution.
+    ///
+    /// Returns the job ID if successfully enqueued, or None if deduplicated.
     #[instrument(name = "workers.enqueue", skip(self, conn), fields(message = Self::JOB_NAME))]
     fn enqueue(
         &self,

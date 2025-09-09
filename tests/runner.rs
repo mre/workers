@@ -1,3 +1,7 @@
+#![allow(missing_docs)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::panic)]
+
 use claims::{assert_none, assert_some};
 use diesel::prelude::*;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
@@ -11,6 +15,33 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use tokio::sync::Barrier;
 use workers::schema::background_jobs;
 use workers::{BackgroundJob, Runner};
+
+/// Test utilities and common setup
+mod test_utils {
+    use super::*;
+
+    /// Create a connection pool for testing
+    pub fn create_pool(database_url: &str) -> anyhow::Result<Pool<AsyncPgConnection>> {
+        let manager = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
+        Ok(Pool::builder(manager).max_size(4).build()?)
+    }
+
+    /// Create a test runner with common configuration
+    pub fn create_test_runner<Context: Clone + Send + Sync + 'static>(
+        pool: Pool<AsyncPgConnection>,
+        context: Context,
+    ) -> Runner<Context> {
+        Runner::new(pool, context)
+            .configure_default_queue(|queue| queue.num_workers(2))
+            .shutdown_when_queue_empty()
+    }
+
+    /// Get the database URL from environment, panicking with helpful message if not found
+    pub fn get_test_database_url() -> String {
+        std::env::var("DATABASE_URL")
+            .expect("DATABASE_URL environment variable must be set to run integration tests")
+    }
+}
 
 async fn all_jobs(conn: &mut AsyncPgConnection) -> QueryResult<Vec<(String, Value)>> {
     background_jobs::table
@@ -63,18 +94,18 @@ async fn jobs_are_locked_when_fetched() -> anyhow::Result<()> {
         }
     }
 
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL environment variable must be set to run integration tests");
+    let database_url = test_utils::get_test_database_url();
 
     let test_context = TestContext {
         job_started_barrier: Arc::new(Barrier::new(2)),
         assertions_finished_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = pool(&database_url)?;
+    let pool = test_utils::create_pool(&database_url)?;
     let mut conn = pool.get().await?;
 
-    let runner = runner(pool, test_context.clone()).register_job_type::<TestJob>();
+    let runner =
+        test_utils::create_test_runner(pool, test_context.clone()).register_job_type::<TestJob>();
 
     let job_id = assert_some!(TestJob.enqueue(&mut conn).await?);
 
@@ -113,13 +144,12 @@ async fn jobs_are_deleted_when_successfully_run() -> anyhow::Result<()> {
         background_jobs::table.count().get_result(conn).await
     }
 
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL environment variable must be set to run integration tests");
+    let database_url = test_utils::get_test_database_url();
 
-    let pool = pool(&database_url)?;
+    let pool = test_utils::create_pool(&database_url)?;
     let mut conn = pool.get().await?;
 
-    let runner = runner(pool, ()).register_job_type::<TestJob>();
+    let runner = test_utils::create_test_runner(pool, ()).register_job_type::<TestJob>();
 
     assert_eq!(remaining_jobs(&mut conn).await?, 0);
 
@@ -153,17 +183,17 @@ async fn failed_jobs_do_not_release_lock_before_updating_retry_time() -> anyhow:
         }
     }
 
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL environment variable must be set to run integration tests");
+    let database_url = test_utils::get_test_database_url();
 
     let test_context = TestContext {
         job_started_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = pool(&database_url)?;
+    let pool = test_utils::create_pool(&database_url)?;
     let mut conn = pool.get().await?;
 
-    let runner = runner(pool, test_context.clone()).register_job_type::<TestJob>();
+    let runner =
+        test_utils::create_test_runner(pool, test_context.clone()).register_job_type::<TestJob>();
 
     TestJob.enqueue(&mut conn).await?;
 
@@ -209,13 +239,12 @@ async fn panicking_in_jobs_updates_retry_counter() -> anyhow::Result<()> {
         }
     }
 
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL environment variable must be set to run integration tests");
+    let database_url = test_utils::get_test_database_url();
 
-    let pool = pool(&database_url)?;
+    let pool = test_utils::create_pool(&database_url)?;
     let mut conn = pool.get().await?;
 
-    let runner = runner(pool, ()).register_job_type::<TestJob>();
+    let runner = test_utils::create_test_runner(pool, ()).register_job_type::<TestJob>();
 
     let job_id = assert_some!(TestJob.enqueue(&mut conn).await?);
 
@@ -269,8 +298,7 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
         }
     }
 
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL environment variable must be set to run integration tests");
+    let database_url = test_utils::get_test_database_url();
 
     let test_context = TestContext {
         runs: Arc::new(AtomicU8::new(0)),
@@ -278,7 +306,7 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
         assertions_finished_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = pool(&database_url)?;
+    let pool = test_utils::create_pool(&database_url)?;
     let mut conn = pool.get().await?;
 
     let runner = Runner::new(pool, test_context.clone())
@@ -316,18 +344,4 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
     runner.wait_for_shutdown().await;
 
     Ok(())
-}
-
-fn pool(database_url: &str) -> anyhow::Result<Pool<AsyncPgConnection>> {
-    let manager = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
-    Ok(Pool::builder(manager).max_size(4).build()?)
-}
-
-fn runner<Context: Clone + Send + Sync + 'static>(
-    deadpool: Pool<AsyncPgConnection>,
-    context: Context,
-) -> Runner<Context> {
-    Runner::new(deadpool, context)
-        .configure_default_queue(|queue| queue.num_workers(2))
-        .shutdown_when_queue_empty()
 }

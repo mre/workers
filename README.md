@@ -35,7 +35,7 @@ The system consists of three main components:
   - Executes job logic with error handling and retry logic
   - Reports job completion or failure back to the database
 
-Jobs are stored in the `background_jobs` PostgreSQL table and processed asynchronously by worker instances that poll for available work in their assigned queues.
+Jobs are stored in the `background_jobs` `PostgreSQL` table and processed asynchronously by worker instances that poll for available work in their assigned queues.
 
 ### Job Processing and Locking
 
@@ -143,7 +143,7 @@ All job execution is instrumented with tracing and optionally reported to Sentry
 
 ## Testing
 
-To run the integration tests, you need to set up a PostgreSQL database and provide the connection URL:
+To run the integration tests, you need to set up a `PostgreSQL` database and provide the connection URL:
 
 ```bash
 export DATABASE_URL="postgresql://username:password@localhost/test_database"

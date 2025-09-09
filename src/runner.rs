@@ -23,6 +23,7 @@ pub struct Runner<Context> {
 }
 
 impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
+    /// Create a new runner with the given connection pool and context.
     pub fn new(connection_pool: Pool<AsyncPgConnection>, context: Context) -> Self {
         Self {
             connection_pool,
@@ -39,7 +40,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
         self
     }
 
-    /// Adjust the configuration of the [DEFAULT_QUEUE] queue.
+    /// Adjust the configuration of the [`DEFAULT_QUEUE`] queue.
     pub fn configure_default_queue<F>(self, f: F) -> Self
     where
         F: FnOnce(&mut Queue<Context>) -> &Queue<Context>,

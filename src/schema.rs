@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 diesel::table! {
     background_jobs (id) {
         id -> Int8,
