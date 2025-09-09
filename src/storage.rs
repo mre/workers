@@ -1,62 +1,40 @@
-use crate::schema::background_jobs;
-use diesel::dsl::now;
-use diesel::pg::Pg;
-use diesel::prelude::*;
-use diesel::sql_types::{Bool, Integer, Interval};
-use diesel::{delete, update};
-use diesel_async::{AsyncPgConnection, RunQueryDsl};
-
-#[derive(Queryable, Selectable, Identifiable, Debug, Clone)]
-pub struct BackgroundJob {
-    pub id: i64,
-    pub job_type: String,
-    pub data: serde_json::Value,
-}
-
-fn retriable() -> Box<dyn BoxableExpression<background_jobs::table, Pg, SqlType = Bool>> {
-    use diesel::dsl::*;
-
-    define_sql_function!(fn power(x: Integer, y: Integer) -> Integer);
-
-    Box::new(
-        background_jobs::last_retry
-            .lt(now - 1.minute().into_sql::<Interval>() * power(2, background_jobs::retries)),
-    )
-}
+use crate::schema::BackgroundJob;
+use sqlx::PgPool;
 
 /// Finds the next job that is unlocked, and ready to be retried. If a row is
-/// found, it will be locked.
+/// found, it will be locked using SKIP LOCKED.
 pub(crate) async fn find_next_unlocked_job(
-    conn: &mut AsyncPgConnection,
+    pool: &PgPool,
     job_types: &[String],
-) -> QueryResult<BackgroundJob> {
-    background_jobs::table
-        .select(BackgroundJob::as_select())
-        .filter(background_jobs::job_type.eq_any(job_types))
-        .filter(retriable())
-        .order((background_jobs::priority.desc(), background_jobs::id))
-        .for_update()
-        .skip_locked()
-        .first::<BackgroundJob>(conn)
-        .await
+) -> Result<BackgroundJob, sqlx::Error> {
+    sqlx::query_as::<_, BackgroundJob>(
+        r"
+        SELECT id, job_type, data, retries, last_retry, created_at, priority
+        FROM background_jobs
+        WHERE job_type = ANY($1)
+          AND last_retry < NOW() - INTERVAL '1 minute' * POWER(2, retries)
+        ORDER BY priority DESC, id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+        ",
+    )
+    .bind(job_types)
+    .fetch_one(pool)
+    .await
 }
 
 /// The number of jobs that have failed at least once
-pub(crate) async fn failed_job_count(conn: &mut AsyncPgConnection) -> QueryResult<i64> {
-    background_jobs::table
-        .count()
-        .filter(background_jobs::retries.gt(0))
-        .get_result(conn)
+pub(crate) async fn failed_job_count(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM background_jobs WHERE retries > 0")
+        .fetch_one(pool)
         .await
 }
 
 /// Deletes a job that has successfully completed running
-pub(crate) async fn delete_successful_job(
-    conn: &mut AsyncPgConnection,
-    job_id: i64,
-) -> QueryResult<()> {
-    delete(background_jobs::table.find(job_id))
-        .execute(conn)
+pub(crate) async fn delete_successful_job(pool: &PgPool, job_id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM background_jobs WHERE id = $1")
+        .bind(job_id)
+        .execute(pool)
         .await?;
     Ok(())
 }
@@ -65,12 +43,11 @@ pub(crate) async fn delete_successful_job(
 ///
 /// Ignores any database errors that may have occurred. If the DB has gone away,
 /// we assume that just trying again with a new connection will succeed.
-pub(crate) async fn update_failed_job(conn: &mut AsyncPgConnection, job_id: i64) {
-    let _ = update(background_jobs::table.find(job_id))
-        .set((
-            background_jobs::retries.eq(background_jobs::retries + 1),
-            background_jobs::last_retry.eq(now),
-        ))
-        .execute(conn)
-        .await;
+pub(crate) async fn update_failed_job(pool: &PgPool, job_id: i64) {
+    let _ = sqlx::query(
+        "UPDATE background_jobs SET retries = retries + 1, last_retry = NOW() WHERE id = $1",
+    )
+    .bind(job_id)
+    .execute(pool)
+    .await;
 }

@@ -3,9 +3,8 @@ use crate::job_registry::JobRegistry;
 use crate::worker::Worker;
 use crate::{BackgroundJob, storage};
 use anyhow::anyhow;
-use diesel_async::AsyncPgConnection;
-use diesel_async::pooled_connection::deadpool::Pool;
 use futures_util::future::join_all;
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,7 +15,7 @@ const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 /// The core runner responsible for locking and running jobs
 pub struct Runner<Context> {
-    connection_pool: Pool<AsyncPgConnection>,
+    connection_pool: PgPool,
     queues: HashMap<String, Queue<Context>>,
     context: Context,
     shutdown_when_queue_empty: bool,
@@ -34,7 +33,7 @@ impl<Context: std::fmt::Debug> std::fmt::Debug for Runner<Context> {
 
 impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
     /// Create a new runner with the given connection pool and context.
-    pub fn new(connection_pool: Pool<AsyncPgConnection>, context: Context) -> Self {
+    pub fn new(connection_pool: PgPool, context: Context) -> Self {
         Self {
             connection_pool,
             queues: HashMap::new(),
@@ -107,9 +106,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
     /// This function is intended for use in tests and will return an error if
     /// any jobs have failed.
     pub async fn check_for_failed_jobs(&self) -> anyhow::Result<()> {
-        let mut conn = self.connection_pool.get().await?;
-
-        let failed_jobs = storage::failed_job_count(&mut conn).await?;
+        let failed_jobs = storage::failed_job_count(&self.connection_pool).await?;
         if failed_jobs == 0 {
             Ok(())
         } else {

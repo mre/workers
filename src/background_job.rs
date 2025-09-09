@@ -1,14 +1,10 @@
 use crate::errors::EnqueueError;
-use crate::schema::background_jobs;
-use diesel::dsl::{exists, not};
-use diesel::sql_types::{Int2, Jsonb, Text};
-use diesel::{ExpressionMethods, IntoSql, OptionalExtension, QueryDsl};
-use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use sqlx::PgPool;
 use std::future::Future;
 use tracing::instrument;
 
@@ -45,11 +41,8 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// Enqueue this job for background execution.
     ///
     /// Returns the job ID if successfully enqueued, or None if deduplicated.
-    #[instrument(name = "workers.enqueue", skip(self, conn), fields(message = Self::JOB_NAME))]
-    fn enqueue(
-        &self,
-        conn: &mut AsyncPgConnection,
-    ) -> BoxFuture<'_, Result<Option<i64>, EnqueueError>> {
+    #[instrument(name = "workers.enqueue", skip(self, pool), fields(message = Self::JOB_NAME))]
+    fn enqueue<'a>(&'a self, pool: &'a PgPool) -> BoxFuture<'a, Result<Option<i64>, EnqueueError>> {
         let data = match serde_json::to_value(self) {
             Ok(data) => data,
             Err(err) => return async move { Err(EnqueueError::SerializationError(err)) }.boxed(),
@@ -57,63 +50,63 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
         let priority = Self::PRIORITY;
 
         if Self::DEDUPLICATED {
-            let future = enqueue_deduplicated(conn, Self::JOB_NAME, data, priority);
+            let future = enqueue_deduplicated(pool, Self::JOB_NAME, data, priority);
             future.boxed()
         } else {
-            let future = enqueue_simple(conn, Self::JOB_NAME, data, priority);
+            let future = enqueue_simple(pool, Self::JOB_NAME, data, priority);
             async move { Ok(Some(future.await?)) }.boxed()
         }
     }
 }
 
 fn enqueue_deduplicated<'a>(
-    conn: &mut AsyncPgConnection,
+    pool: &'a PgPool,
     job_type: &'a str,
     data: Value,
     priority: i16,
 ) -> BoxFuture<'a, Result<Option<i64>, EnqueueError>> {
-    let similar_jobs = background_jobs::table
-        .select(background_jobs::id)
-        .filter(background_jobs::job_type.eq(job_type))
-        .filter(background_jobs::data.eq(data.clone()))
-        .filter(background_jobs::priority.eq(priority))
-        .for_update()
-        .skip_locked();
+    async move {
+        // Try to insert only if no similar job exists (not locked)
+        let result = sqlx::query_scalar::<_, Option<i64>>(
+            r"
+            INSERT INTO background_jobs (job_type, data, priority)
+            SELECT $1, $2, $3
+            WHERE NOT EXISTS (
+                SELECT 1 FROM background_jobs
+                WHERE job_type = $1 AND data = $2 AND priority = $3
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id
+            ",
+        )
+        .bind(job_type)
+        .bind(data)
+        .bind(priority)
+        .fetch_optional(pool)
+        .await?;
 
-    let deduplicated_select = diesel::select((
-        job_type.into_sql::<Text>(),
-        data.into_sql::<Jsonb>(),
-        priority.into_sql::<Int2>(),
-    ))
-    .filter(not(exists(similar_jobs)));
-
-    let future = diesel::insert_into(background_jobs::table)
-        .values(deduplicated_select)
-        .into_columns((
-            background_jobs::job_type,
-            background_jobs::data,
-            background_jobs::priority,
-        ))
-        .returning(background_jobs::id)
-        .get_result::<i64>(conn);
-
-    async move { Ok(future.await.optional()?) }.boxed()
+        Ok(result.flatten())
+    }
+    .boxed()
 }
 
 fn enqueue_simple<'a>(
-    conn: &mut AsyncPgConnection,
+    pool: &'a PgPool,
     job_type: &'a str,
     data: Value,
     priority: i16,
 ) -> BoxFuture<'a, Result<i64, EnqueueError>> {
-    let future = diesel::insert_into(background_jobs::table)
-        .values((
-            background_jobs::job_type.eq(job_type),
-            background_jobs::data.eq(data),
-            background_jobs::priority.eq(priority),
-        ))
-        .returning(background_jobs::id)
-        .get_result(conn);
+    async move {
+        let id = sqlx::query_scalar::<_, i64>(
+            "INSERT INTO background_jobs (job_type, data, priority) VALUES ($1, $2, $3) RETURNING id"
+        )
+        .bind(job_type)
+        .bind(data)
+        .bind(priority)
+        .fetch_one(pool)
+        .await?;
 
-    async move { Ok(future.await?) }.boxed()
+        Ok(id)
+    }
+    .boxed()
 }

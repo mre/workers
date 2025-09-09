@@ -8,5 +8,5 @@ pub enum EnqueueError {
 
     /// An error occurred inserting the job into the database
     #[error(transparent)]
-    DatabaseError(#[from] diesel::result::Error),
+    DatabaseError(#[from] sqlx::Error),
 }
