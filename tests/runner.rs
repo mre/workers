@@ -1,7 +1,4 @@
 use claims::{assert_none, assert_some};
-use crates_io_test_db::TestDatabase;
-use crates_io_worker::schema::background_jobs;
-use crates_io_worker::{BackgroundJob, Runner};
 use diesel::prelude::*;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::deadpool::Pool;
@@ -12,6 +9,8 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use tokio::sync::Barrier;
+use workers::schema::background_jobs;
+use workers::{BackgroundJob, Runner};
 
 async fn all_jobs(conn: &mut AsyncPgConnection) -> QueryResult<Vec<(String, Value)>> {
     background_jobs::table
@@ -64,14 +63,15 @@ async fn jobs_are_locked_when_fetched() -> anyhow::Result<()> {
         }
     }
 
-    let test_database = TestDatabase::new();
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL environment variable must be set to run integration tests");
 
     let test_context = TestContext {
         job_started_barrier: Arc::new(Barrier::new(2)),
         assertions_finished_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = pool(test_database.url())?;
+    let pool = pool(&database_url)?;
     let mut conn = pool.get().await?;
 
     let runner = runner(pool, test_context.clone()).register_job_type::<TestJob>();
@@ -113,9 +113,10 @@ async fn jobs_are_deleted_when_successfully_run() -> anyhow::Result<()> {
         background_jobs::table.count().get_result(conn).await
     }
 
-    let test_database = TestDatabase::new();
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL environment variable must be set to run integration tests");
 
-    let pool = pool(test_database.url())?;
+    let pool = pool(&database_url)?;
     let mut conn = pool.get().await?;
 
     let runner = runner(pool, ()).register_job_type::<TestJob>();
@@ -152,13 +153,14 @@ async fn failed_jobs_do_not_release_lock_before_updating_retry_time() -> anyhow:
         }
     }
 
-    let test_database = TestDatabase::new();
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL environment variable must be set to run integration tests");
 
     let test_context = TestContext {
         job_started_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = pool(test_database.url())?;
+    let pool = pool(&database_url)?;
     let mut conn = pool.get().await?;
 
     let runner = runner(pool, test_context.clone()).register_job_type::<TestJob>();
@@ -207,9 +209,10 @@ async fn panicking_in_jobs_updates_retry_counter() -> anyhow::Result<()> {
         }
     }
 
-    let test_database = TestDatabase::new();
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL environment variable must be set to run integration tests");
 
-    let pool = pool(test_database.url())?;
+    let pool = pool(&database_url)?;
     let mut conn = pool.get().await?;
 
     let runner = runner(pool, ()).register_job_type::<TestJob>();
@@ -266,7 +269,8 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
         }
     }
 
-    let test_database = TestDatabase::new();
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL environment variable must be set to run integration tests");
 
     let test_context = TestContext {
         runs: Arc::new(AtomicU8::new(0)),
@@ -274,7 +278,7 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
         assertions_finished_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = pool(test_database.url())?;
+    let pool = pool(&database_url)?;
     let mut conn = pool.get().await?;
 
     let runner = Runner::new(pool, test_context.clone())

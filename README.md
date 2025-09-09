@@ -1,6 +1,6 @@
-# crates_io_worker
+# workers
 
-A robust background job processing system for the crates.io application.
+A robust async PostgreSQL-backed background job processing system.
 
 ## Overview
 
@@ -66,7 +66,7 @@ CREATE TABLE background_jobs (
 ### Defining a Job
 
 ```rust, ignore
-use crates_io_worker::BackgroundJob;
+use workers::BackgroundJob;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -95,7 +95,7 @@ impl BackgroundJob for SendEmailJob {
 ### Running the Worker
 
 ```rust,ignore
-use crates_io_worker::Runner;
+use workers::Runner;
 use std::time::Duration;
 
 let runner = Runner::new(connection_pool, app_context)
@@ -141,8 +141,31 @@ Failed jobs are automatically retried with exponential backoff. The retry count 
 
 All job execution is instrumented with tracing and optionally reported to Sentry for error monitoring.
 
+## Testing
+
+To run the integration tests, you need to set up a PostgreSQL database and provide the connection URL:
+
+```bash
+export DATABASE_URL="postgresql://username:password@localhost/test_database"
+cargo test
+```
+
+The tests require the `background_jobs` table to exist in the test database. You can create it with:
+
+```sql
+CREATE TABLE background_jobs (
+    id BIGSERIAL PRIMARY KEY,
+    job_type TEXT NOT NULL,
+    data JSONB NOT NULL,
+    retries INTEGER NOT NULL DEFAULT 0,
+    last_retry TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    priority SMALLINT NOT NULL DEFAULT 0
+);
+```
+
 ## History
 
-The implementation was originally extracted from crates.io into the separate
-[`swirl`](https://github.com/sgrif/swirl) project, but has since been
-re-integrated and heavily modified to meet the specific needs of the crates.io platform.
+The implementation was originally developed as part of crates.io and was extracted from the separate
+[`swirl`](https://github.com/sgrif/swirl) project, then re-integrated and heavily modified
+to provide a robust, production-ready job queue system.

@@ -15,7 +15,7 @@ where
     let hub = Hub::new_from_top(Hub::current());
     let _scope_guard = hub.push_scope();
 
-    let tx_ctx = sentry_core::TransactionContext::new(transaction_name, "swirl.perform");
+    let tx_ctx = sentry_core::TransactionContext::new(transaction_name, "workers.perform");
     let tx = sentry_core::start_transaction(tx_ctx);
 
     hub.configure_scope(|scope| scope.set_span(Some(tx.clone().into())));
