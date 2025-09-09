@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 #![allow(clippy::expect_used)]
 #![allow(clippy::panic)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::indexing_slicing)]
 
 use claims::{assert_none, assert_some};
 use diesel::prelude::*;
@@ -21,13 +23,13 @@ mod test_utils {
     use super::*;
 
     /// Create a connection pool for testing
-    pub fn create_pool(database_url: &str) -> anyhow::Result<Pool<AsyncPgConnection>> {
+    pub(super) fn create_pool(database_url: &str) -> anyhow::Result<Pool<AsyncPgConnection>> {
         let manager = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
         Ok(Pool::builder(manager).max_size(4).build()?)
     }
 
     /// Create a test runner with common configuration
-    pub fn create_test_runner<Context: Clone + Send + Sync + 'static>(
+    pub(super) fn create_test_runner<Context: Clone + Send + Sync + 'static>(
         pool: Pool<AsyncPgConnection>,
         context: Context,
     ) -> Runner<Context> {
@@ -37,7 +39,7 @@ mod test_utils {
     }
 
     /// Get the database URL from environment, panicking with helpful message if not found
-    pub fn get_test_database_url() -> String {
+    pub(super) fn get_test_database_url() -> String {
         std::env::var("DATABASE_URL")
             .expect("DATABASE_URL environment variable must be set to run integration tests")
     }

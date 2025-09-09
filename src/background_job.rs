@@ -12,6 +12,7 @@ use serde_json::Value;
 use std::future::Future;
 use tracing::instrument;
 
+/// The default queue name used when no specific queue is specified.
 pub const DEFAULT_QUEUE: &str = "default";
 
 /// Trait for defining background jobs that can be enqueued and executed asynchronously.

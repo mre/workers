@@ -28,7 +28,16 @@ tokio = { version = "1.47", features = ["macros", "sync"] }
 
 [lints.rust]
 unsafe_code = "forbid"
-missing_docs = "warn"
+missing_docs = "deny"
+missing_debug_implementations = "forbid"
+missing_copy_implementations = "warn"
+trivial_casts = "forbid"
+trivial_numeric_casts = "forbid"
+unused_allocation = "forbid"
+unused_comparisons = "forbid"
+unused_parens = "forbid"
+while_true = "forbid"
+unreachable_pub = "warn"
 
 [lints.clippy]
 # Correctness lints
@@ -46,17 +55,25 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 
 # Individual lints that are particularly important
-cargo_common_metadata = "warn"
-dbg_macro = "warn"
-todo = "warn"
-unimplemented = "warn"
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
-print_stdout = "warn"
-print_stderr = "warn"
+cargo_common_metadata = "forbid"
+dbg_macro = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+print_stdout = "forbid"
+print_stderr = "forbid"
+exit = "forbid"
+mem_forget = "forbid"
+fn_to_numeric_cast_any = "forbid"
+lossy_float_literal = "forbid"
+rest_pat_in_fully_bound_structs = "forbid"
+verbose_file_reads = "forbid"
+string_slice = "forbid"
+indexing_slicing = "deny"
 
-# Allow some pedantic lints that can be overly strict
+# Allow some pedantic lints that can be overly strict for library code
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
@@ -66,3 +83,8 @@ missing_const_for_fn = "allow"
 option_if_let_else = "allow"
 ignored_unit_patterns = "allow"
 wildcard_imports = "allow"
+redundant_pub_crate = "allow"
+missing_fields_in_debug = "allow"
+
+# Test-specific allows (will be handled in test files)
+# These are allowed globally but tests should override with #![allow(...)]

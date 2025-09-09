@@ -26,7 +26,7 @@ fn retriable() -> Box<dyn BoxableExpression<background_jobs::table, Pg, SqlType 
 
 /// Finds the next job that is unlocked, and ready to be retried. If a row is
 /// found, it will be locked.
-pub async fn find_next_unlocked_job(
+pub(crate) async fn find_next_unlocked_job(
     conn: &mut AsyncPgConnection,
     job_types: &[String],
 ) -> QueryResult<BackgroundJob> {
@@ -42,7 +42,7 @@ pub async fn find_next_unlocked_job(
 }
 
 /// The number of jobs that have failed at least once
-pub async fn failed_job_count(conn: &mut AsyncPgConnection) -> QueryResult<i64> {
+pub(crate) async fn failed_job_count(conn: &mut AsyncPgConnection) -> QueryResult<i64> {
     background_jobs::table
         .count()
         .filter(background_jobs::retries.gt(0))
@@ -51,7 +51,10 @@ pub async fn failed_job_count(conn: &mut AsyncPgConnection) -> QueryResult<i64> 
 }
 
 /// Deletes a job that has successfully completed running
-pub async fn delete_successful_job(conn: &mut AsyncPgConnection, job_id: i64) -> QueryResult<()> {
+pub(crate) async fn delete_successful_job(
+    conn: &mut AsyncPgConnection,
+    job_id: i64,
+) -> QueryResult<()> {
     delete(background_jobs::table.find(job_id))
         .execute(conn)
         .await?;
@@ -62,7 +65,7 @@ pub async fn delete_successful_job(conn: &mut AsyncPgConnection, job_id: i64) ->
 ///
 /// Ignores any database errors that may have occurred. If the DB has gone away,
 /// we assume that just trying again with a new connection will succeed.
-pub async fn update_failed_job(conn: &mut AsyncPgConnection, job_id: i64) {
+pub(crate) async fn update_failed_job(conn: &mut AsyncPgConnection, job_id: i64) {
     let _ = update(background_jobs::table.find(job_id))
         .set((
             background_jobs::retries.eq(background_jobs::retries + 1),

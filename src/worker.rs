@@ -14,7 +14,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{Instrument, debug, error, info_span, warn};
 
-pub struct Worker<Context> {
+pub(crate) struct Worker<Context> {
     pub(crate) connection_pool: Pool<AsyncPgConnection>,
     pub(crate) context: Context,
     pub(crate) job_registry: Arc<JobRegistry<Context>>,
@@ -24,7 +24,7 @@ pub struct Worker<Context> {
 
 impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
     /// Run background jobs forever, or until the queue is empty if `shutdown_when_queue_empty` is set.
-    pub async fn run(&self) {
+    pub(crate) async fn run(&self) {
         loop {
             match self.run_next_job().await {
                 Ok(Some(_)) => {}

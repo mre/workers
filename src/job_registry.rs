@@ -8,8 +8,16 @@ type RunTaskFnReturn = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
 type RunTaskFn<Context> = dyn Fn(Context, serde_json::Value) -> RunTaskFnReturn + Send + Sync;
 
 #[derive(Clone)]
-pub struct JobRegistry<Context> {
+pub(crate) struct JobRegistry<Context> {
     entries: HashMap<String, Arc<RunTaskFn<Context>>>,
+}
+
+impl<Context> std::fmt::Debug for JobRegistry<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JobRegistry")
+            .field("job_types", &self.entries.keys().collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 impl<Context> Default for JobRegistry<Context> {
@@ -21,17 +29,17 @@ impl<Context> Default for JobRegistry<Context> {
 }
 
 impl<Context: Clone + Send + Sync + 'static> JobRegistry<Context> {
-    pub fn register<J: BackgroundJob<Context = Context>>(&mut self) {
+    pub(crate) fn register<J: BackgroundJob<Context = Context>>(&mut self) {
         self.entries
             .insert(J::JOB_NAME.to_string(), Arc::new(runnable::<J>));
     }
 
-    pub fn get(&self, key: &str) -> Option<&Arc<RunTaskFn<Context>>> {
+    pub(crate) fn get(&self, key: &str) -> Option<&Arc<RunTaskFn<Context>>> {
         self.entries.get(key)
     }
 
     /// Returns a list of all registered job types.
-    pub fn job_types(&self) -> Vec<String> {
+    pub(crate) fn job_types(&self) -> Vec<String> {
         self.entries.keys().cloned().collect()
     }
 }

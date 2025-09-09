@@ -1,6 +1,4 @@
 #![doc = include_str!("../README.md")]
-#![warn(missing_docs)]
-#![forbid(unsafe_code)]
 
 mod background_job;
 mod errors;
@@ -14,6 +12,8 @@ mod worker;
 
 /// The main trait for defining background jobs.
 pub use self::background_job::BackgroundJob;
+/// The default queue name used when no specific queue is specified.
+pub use self::background_job::DEFAULT_QUEUE;
 /// Error type for job enqueueing operations.
 pub use self::errors::EnqueueError;
 /// The main runner that orchestrates job processing.

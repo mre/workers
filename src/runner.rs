@@ -22,6 +22,16 @@ pub struct Runner<Context> {
     shutdown_when_queue_empty: bool,
 }
 
+impl<Context: std::fmt::Debug> std::fmt::Debug for Runner<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Runner")
+            .field("queues", &self.queues.keys().collect::<Vec<_>>())
+            .field("context", &self.context)
+            .field("shutdown_when_queue_empty", &self.shutdown_when_queue_empty)
+            .finish()
+    }
+}
+
 impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
     /// Create a new runner with the given connection pool and context.
     pub fn new(connection_pool: Pool<AsyncPgConnection>, context: Context) -> Self {
@@ -108,6 +118,8 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
     }
 }
 
+/// Handle to a running background job processing system
+#[derive(Debug)]
 pub struct RunHandle {
     handles: Vec<JoinHandle<()>>,
 }
@@ -123,6 +135,8 @@ impl RunHandle {
     }
 }
 
+/// Configuration and state for a job queue
+#[derive(Debug)]
 pub struct Queue<Context> {
     job_registry: JobRegistry<Context>,
     num_workers: usize,
@@ -140,13 +154,13 @@ impl<Context> Default for Queue<Context> {
 }
 
 impl<Context> Queue<Context> {
-    /// Set the number of workers to spawn for this queue.
+    /// Set the number of worker threads for this queue.
     pub fn num_workers(&mut self, num_workers: usize) -> &mut Self {
         self.num_workers = num_workers;
         self
     }
 
-    /// Set the interval after which each worker of this queue polls for new jobs.
+    /// Set how often workers poll for new jobs.
     pub fn poll_interval(&mut self, poll_interval: Duration) -> &mut Self {
         self.poll_interval = poll_interval;
         self

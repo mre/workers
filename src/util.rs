@@ -4,7 +4,7 @@ use std::any::Any;
 use std::future::Future;
 use std::panic::PanicHookInfo;
 
-pub async fn with_sentry_transaction<F, R, E, Fut>(
+pub(crate) async fn with_sentry_transaction<F, R, E, Fut>(
     transaction_name: &str,
     callback: F,
 ) -> Result<R, E>
@@ -38,7 +38,7 @@ where
 /// However, the `panic::set_hook` functions deal with a `PanicHookInfo` type, and its payload is
 /// documented as "commonly but not always `&'static str` or `String`". So we can try all of those,
 /// and give up if we didn't get one of those three types.
-pub fn try_to_extract_panic_info(info: &(dyn Any + Send + 'static)) -> anyhow::Error {
+pub(crate) fn try_to_extract_panic_info(info: &(dyn Any + Send + 'static)) -> anyhow::Error {
     info.downcast_ref::<PanicHookInfo<'_>>().map_or_else(
         || {
             if let Some(x) = info.downcast_ref::<&'static str>() {
