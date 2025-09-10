@@ -31,8 +31,7 @@ mod test_utils {
         let port = container.get_host_port_ipv4(5432).await?;
 
         // Use the standard postgres/postgres credentials for testcontainers
-        let connection_string =
-            format!("postgresql://postgres:postgres@{host}:{port}/postgres");
+        let connection_string = format!("postgresql://postgres:postgres@{host}:{port}/postgres");
 
         let pool = PgPool::connect(&connection_string).await?;
 

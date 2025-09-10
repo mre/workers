@@ -148,7 +148,7 @@ All job execution is instrumented with tracing and optionally reported to Sentry
 The workers poll the database for new jobs at regular intervals (configurable via `poll_interval`). While this is simple and reliable, it does generate constant database queries. For production deployments, consider:
 
 **Tuning Poll Intervals:**
-```rust
+```rust,ignore
 .configure_queue("low_priority", |queue| {
     queue.poll_interval(Duration::from_secs(30))  // Less frequent polling
 })

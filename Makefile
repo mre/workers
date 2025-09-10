@@ -90,3 +90,4 @@ stress:
 	@echo "Starting Stress Test. Press Ctrl+C to stop early"
 	@echo ""
 	cd examples/stress_test && cargo run --release -- --jobs 200 --duration 45
+
