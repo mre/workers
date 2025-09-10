@@ -11,16 +11,35 @@ use serde_json::Value;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use testcontainers::ContainerAsync;
+use testcontainers_modules::postgres::Postgres;
 use tokio::sync::Barrier;
 use workers::{BackgroundJob, Runner};
 
 /// Test utilities and common setup
 mod test_utils {
     use super::*;
+    use testcontainers::runners::AsyncRunner;
 
-    /// Create a connection pool for testing
-    pub(super) async fn create_pool(database_url: &str) -> anyhow::Result<PgPool> {
-        Ok(PgPool::connect(database_url).await?)
+    /// Set up a test database with TestContainers and return the pool and container  
+    pub(super) async fn setup_test_db() -> anyhow::Result<(PgPool, ContainerAsync<Postgres>)> {
+        let postgres_image = Postgres::default();
+        let container = postgres_image.start().await?;
+
+        // Get the connection parameters from the container
+        let host = container.get_host().await?;
+        let port = container.get_host_port_ipv4(5432).await?;
+
+        // Use the standard postgres/postgres credentials for testcontainers
+        let connection_string =
+            format!("postgresql://postgres:postgres@{}:{}/postgres", host, port);
+
+        let pool = PgPool::connect(&connection_string).await?;
+
+        // Run migrations
+        sqlx::migrate!("./migrations").run(&pool).await?;
+
+        Ok((pool, container))
     }
 
     /// Create a test runner with common configuration
@@ -31,12 +50,6 @@ mod test_utils {
         Runner::new(pool, context)
             .configure_default_queue(|queue| queue.num_workers(2))
             .shutdown_when_queue_empty()
-    }
-
-    /// Get the database URL from environment, panicking with helpful message if not found
-    pub(super) fn get_test_database_url() -> String {
-        std::env::var("DATABASE_URL")
-            .expect("DATABASE_URL environment variable must be set to run integration tests")
     }
 }
 
@@ -98,14 +111,12 @@ async fn jobs_are_locked_when_fetched() -> anyhow::Result<()> {
         }
     }
 
-    let database_url = test_utils::get_test_database_url();
-
     let test_context = TestContext {
         job_started_barrier: Arc::new(Barrier::new(2)),
         assertions_finished_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = test_utils::create_pool(&database_url).await?;
+    let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), test_context.clone())
         .register_job_type::<TestJob>();
@@ -150,9 +161,7 @@ async fn jobs_are_deleted_when_successfully_run() -> anyhow::Result<()> {
         Ok(count)
     }
 
-    let database_url = test_utils::get_test_database_url();
-
-    let pool = test_utils::create_pool(&database_url).await?;
+    let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), ()).register_job_type::<TestJob>();
 
@@ -188,13 +197,11 @@ async fn failed_jobs_do_not_release_lock_before_updating_retry_time() -> anyhow:
         }
     }
 
-    let database_url = test_utils::get_test_database_url();
-
     let test_context = TestContext {
         job_started_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = test_utils::create_pool(&database_url).await?;
+    let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), test_context.clone())
         .register_job_type::<TestJob>();
@@ -240,9 +247,7 @@ async fn panicking_in_jobs_updates_retry_counter() -> anyhow::Result<()> {
         }
     }
 
-    let database_url = test_utils::get_test_database_url();
-
-    let pool = test_utils::create_pool(&database_url).await?;
+    let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), ()).register_job_type::<TestJob>();
 
@@ -298,15 +303,13 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
         }
     }
 
-    let database_url = test_utils::get_test_database_url();
-
     let test_context = TestContext {
         runs: Arc::new(AtomicU8::new(0)),
         job_started_barrier: Arc::new(Barrier::new(2)),
         assertions_finished_barrier: Arc::new(Barrier::new(2)),
     };
 
-    let pool = test_utils::create_pool(&database_url).await?;
+    let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = Runner::new(pool.clone(), test_context.clone())
         .register_job_type::<TestJob>()

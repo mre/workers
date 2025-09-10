@@ -141,28 +141,46 @@ Failed jobs are automatically retried with exponential backoff. The retry count 
 
 All job execution is instrumented with tracing and optionally reported to Sentry for error monitoring.
 
-## Testing
+## Development Setup
 
-To run the integration tests, you need to set up a `PostgreSQL` database and provide the connection URL:
+This project uses [TestContainers](https://rust.testcontainers.org/) for integration testing, which automatically spins up PostgreSQL containers during test execution.
+
+### Testing
+
+Simply run the tests - TestContainers handles the database setup automatically:
 
 ```bash
-export DATABASE_URL="postgresql://username:password@localhost/test_database"
-cargo test
+# Run all tests (PostgreSQL containers managed automatically)
+make test
+
+# Run tests with verbose output
+make test-verbose
+
+# Run all quality checks (format, lint, test)
+make ci
 ```
 
-The tests require the `background_jobs` table to exist in the test database. You can create it with:
+### Requirements
 
-```sql
-CREATE TABLE background_jobs (
-    id BIGSERIAL PRIMARY KEY,
-    job_type TEXT NOT NULL,
-    data JSONB NOT NULL,
-    retries INTEGER NOT NULL DEFAULT 0,
-    last_retry TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    priority SMALLINT NOT NULL DEFAULT 0
-);
-```
+- **Docker**: TestContainers requires Docker to be running for integration tests
+  - ⚠️ **Important**: Make sure Docker Desktop (or equivalent) is started before running tests
+  - Tests will fail with connection errors if Docker is not available
+- **Rust**: Standard Rust toolchain for compilation
+
+The tests will automatically:
+1. Start a PostgreSQL container using TestContainers
+2. Run database migrations 
+3. Execute the test suite
+4. Clean up containers when finished
+
+No manual database setup required!
+
+### Troubleshooting
+
+If tests fail with "client error (Connect)" or similar Docker errors:
+1. Ensure Docker Desktop is running
+2. Verify with: `docker ps`
+3. If Docker is running but tests still fail, try: `docker system prune` to clean up resources
 
 ## History
 

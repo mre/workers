@@ -8,7 +8,7 @@ all: fmt clippy test
 help:
 	@echo "Available targets:"
 	@echo "  build       - Build the project"
-	@echo "  test        - Run all tests"
+	@echo "  test        - Run all tests (uses TestContainers)"
 	@echo "  check       - Check that the project compiles"
 	@echo "  fmt         - Format code using rustfmt"
 	@echo "  clippy      - Run clippy lints"
@@ -17,8 +17,7 @@ help:
 	@echo "  all         - Run fmt, clippy, and test (default)"
 	@echo "  ci          - Run all CI checks (check, clippy, test, fmt-check)"
 	@echo ""
-	@echo "Environment variables:"
-	@echo "  DATABASE_URL - Required for tests (e.g., postgresql://user:pass@localhost/test_db)"
+	@echo "Note: Tests automatically spin up PostgreSQL containers using TestContainers"
 
 # Build the project
 build:

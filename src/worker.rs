@@ -60,10 +60,20 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
         let job_types = job_registry.job_types();
 
         debug!("Looking for next background worker job…");
-        let job = match storage::find_next_unlocked_job(pool, &job_types).await {
+
+        // Start a transaction to hold the job lock during execution
+        let mut tx = pool.begin().await?;
+
+        let job = match storage::find_next_unlocked_job_tx(&mut tx, &job_types).await {
             Ok(job) => job,
-            Err(sqlx::Error::RowNotFound) => return Ok(None),
-            Err(e) => return Err(e.into()),
+            Err(sqlx::Error::RowNotFound) => {
+                tx.rollback().await?;
+                return Ok(None);
+            }
+            Err(e) => {
+                tx.rollback().await?;
+                return Err(e.into());
+            }
         };
 
         let span = info_span!("job", job.id = %job.id, job.typ = %job.job_type);
@@ -93,11 +103,13 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
         match result {
             Ok(()) => {
                 debug!("Deleting successful job…");
-                storage::delete_successful_job(pool, job_id).await?;
+                storage::delete_successful_job(&mut tx, job_id).await?;
+                tx.commit().await?;
             }
             Err(error) => {
                 warn!("Failed to run job: {error}");
-                storage::update_failed_job(pool, job_id).await;
+                storage::update_failed_job(&mut tx, job_id).await?;
+                tx.commit().await?;
             }
         }
 
