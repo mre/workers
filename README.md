@@ -148,7 +148,7 @@ All job execution is instrumented with tracing and optionally reported to Sentry
 The workers poll the database for new jobs at regular intervals (configurable via `poll_interval`). While this is simple and reliable, it does generate constant database queries. For production deployments, consider:
 
 **Tuning Poll Intervals:**
-```rust
+```rust,ignore
 .configure_queue("low_priority", |queue| {
     queue.poll_interval(Duration::from_secs(30))  // Less frequent polling
 })
@@ -159,7 +159,7 @@ The workers poll the database for new jobs at regular intervals (configurable vi
 
 ## Development Setup
 
-This project uses [TestContainers](https://rust.testcontainers.org/) for integration testing, which automatically spins up PostgreSQL containers during test execution.
+This project uses [TestContainers](https://rust.testcontainers.org/) for integration testing, which automatically spins up `PostgreSQL` containers during test execution.
 
 ### Example Usage 
 
@@ -186,7 +186,7 @@ It demonstrates a few features:
 
 ### Testing
 
-Simply run the tests - TestContainers handles the database setup automatically:
+Simply run the tests - `TestContainers` handles the database setup automatically:
 
 ```bash
 # Run all tests (PostgreSQL containers managed automatically)
@@ -201,13 +201,13 @@ make ci
 
 ### Requirements
 
-- **Docker**: TestContainers requires Docker to be running for integration tests
+- **Docker**: `TestContainers` requires Docker to be running for integration tests
   - ⚠️ **Important**: Make sure Docker Desktop (or equivalent) is started before running tests
   - Tests will fail with connection errors if Docker is not available
 - **Rust**: Standard Rust toolchain for compilation
 
 The tests will automatically:
-1. Start a PostgreSQL container using TestContainers
+1. Start a `PostgreSQL` container using `TestContainers`
 2. Run database migrations 
 3. Execute the test suite
 4. Clean up containers when finished
