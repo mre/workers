@@ -21,7 +21,7 @@ mod test_utils {
     use super::*;
     use testcontainers::runners::AsyncRunner;
 
-    /// Set up a test database with TestContainers and return the pool and container  
+    /// Set up a test database with `TestContainers` and return the pool and container  
     pub(super) async fn setup_test_db() -> anyhow::Result<(PgPool, ContainerAsync<Postgres>)> {
         let postgres_image = Postgres::default();
         let container = postgres_image.start().await?;
@@ -32,7 +32,7 @@ mod test_utils {
 
         // Use the standard postgres/postgres credentials for testcontainers
         let connection_string =
-            format!("postgresql://postgres:postgres@{}:{}/postgres", host, port);
+            format!("postgresql://postgres:postgres@{host}:{port}/postgres");
 
         let pool = PgPool::connect(&connection_string).await?;
 
