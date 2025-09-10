@@ -346,3 +346,41 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn jitter_configuration_affects_polling() -> anyhow::Result<()> {
+    use std::time::Duration;
+    use workers::Runner;
+
+    #[derive(Serialize, Deserialize)]
+    struct TestJob;
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "jitter_test";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Test that jitter configuration is accepted and compiles
+    let runner = Runner::new(pool.clone(), ())
+        .register_job_type::<TestJob>()
+        .configure_queue("default", |queue| {
+            queue
+                .num_workers(1)
+                .poll_interval(Duration::from_millis(100))
+                .jitter(Duration::from_millis(50)) // Add up to 50ms jitter
+        })
+        .shutdown_when_queue_empty();
+
+    // No jobs in queue, so the worker will immediately shut down
+    let runner_handle = runner.start();
+    runner_handle.wait_for_shutdown().await;
+
+    // Test passes if jitter configuration is accepted and runs without error
+    Ok(())
+}

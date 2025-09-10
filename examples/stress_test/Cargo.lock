@@ -3280,6 +3280,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "futures-util",
+ "rand 0.8.5",
  "sentry-core",
  "serde",
  "serde_json",

@@ -12,6 +12,7 @@ use tokio::task::JoinHandle;
 use tracing::{Instrument, info, info_span, warn};
 
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const DEFAULT_JITTER: Duration = Duration::from_millis(100);
 
 /// The core runner responsible for locking and running jobs
 pub struct Runner<Context> {
@@ -89,6 +90,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
                     job_registry: Arc::new(queue.job_registry.clone()),
                     shutdown_when_queue_empty: self.shutdown_when_queue_empty,
                     poll_interval: queue.poll_interval,
+                    jitter: queue.jitter,
                 };
 
                 let span = info_span!("worker", worker.name = %name);
@@ -138,6 +140,7 @@ pub struct Queue<Context> {
     job_registry: JobRegistry<Context>,
     num_workers: usize,
     poll_interval: Duration,
+    jitter: Duration,
 }
 
 impl<Context> Default for Queue<Context> {
@@ -146,6 +149,7 @@ impl<Context> Default for Queue<Context> {
             job_registry: JobRegistry::default(),
             num_workers: 1,
             poll_interval: DEFAULT_POLL_INTERVAL,
+            jitter: DEFAULT_JITTER,
         }
     }
 }
@@ -160,6 +164,16 @@ impl<Context> Queue<Context> {
     /// Set how often workers poll for new jobs.
     pub fn poll_interval(&mut self, poll_interval: Duration) -> &mut Self {
         self.poll_interval = poll_interval;
+        self
+    }
+
+    /// Set the maximum random jitter to add to poll intervals.
+    ///
+    /// Jitter helps reduce thundering herd effects when multiple workers
+    /// are polling for jobs simultaneously. The actual jitter applied will
+    /// be a random value between 0 and the specified duration.
+    pub fn jitter(&mut self, jitter: Duration) -> &mut Self {
+        self.jitter = jitter;
         self
     }
 }

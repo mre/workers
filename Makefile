@@ -1,5 +1,5 @@
 # Makefile for workers crate
-.PHONY: help build test check fmt clippy clean doc all ci stress
+.PHONY: help build test check fmt clippy clean doc all ci stress lint lint-fix
 
 # Default target
 all: fmt clippy test
@@ -12,6 +12,8 @@ help:
 	@echo "  check       - Check that the project compiles"
 	@echo "  fmt         - Format code using rustfmt"
 	@echo "  clippy      - Run clippy lints"
+	@echo "  lint        - Run all linting (clippy + fmt check)"
+	@echo "  lint-fix    - Run all linting and fix issues automatically"
 	@echo "  clean       - Clean build artifacts"
 	@echo "  doc         - Generate documentation"
 	@echo "  all         - Run fmt, clippy, and test (default)"
@@ -79,11 +81,17 @@ audit:
 # Run all CI checks
 ci: check clippy test fmt-check
 
-# Lint and fix common issues automatically
-fix:
+# Run linting checks (clippy + format check)
+lint: clippy fmt-check
+
+# Run linting and fix issues automatically
+lint-fix:
 	cargo fix --allow-dirty --allow-staged
 	cargo clippy --fix --allow-dirty --allow-staged
 	cargo fmt
+
+# Lint and fix common issues automatically (alias for lint-fix)
+fix: lint-fix
 
 # Run Pokemon stress test - demonstrates high-throughput job processing
 stress:

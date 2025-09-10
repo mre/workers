@@ -101,7 +101,9 @@ use std::time::Duration;
 let runner = Runner::new(connection_pool, app_context)
     .register_job_type::<SendEmailJob>()
     .configure_queue("emails", |queue| {
-        queue.num_workers(2).poll_interval(Duration::from_secs(5))
+        queue.num_workers(2)
+             .poll_interval(Duration::from_secs(5))
+             .jitter(Duration::from_millis(500))
     });
 
 let handle = runner.start();
@@ -133,6 +135,7 @@ job.enqueue(&mut conn).await?;
 
 - **Worker count**: Number of concurrent workers per queue
 - **Poll interval**: How often workers check for new jobs
+- **Jitter**: Random time added to poll intervals to reduce thundering herd effects (default: 100ms)
 - **Shutdown behavior**: Whether to stop when queue is empty
 
 ## Error Handling

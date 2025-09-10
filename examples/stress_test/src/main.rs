@@ -318,11 +318,13 @@ async fn main() -> Result<()> {
             queue
                 .num_workers(args.workers)
                 .poll_interval(Duration::from_millis(50))
+                .jitter(Duration::from_millis(25))
         })
         .configure_queue("training", |queue| {
             queue
                 .num_workers(args.workers / 2)
                 .poll_interval(Duration::from_millis(100))
+                .jitter(Duration::from_millis(50))
         })
         .configure_queue("pokemon_center", |queue| {
             queue

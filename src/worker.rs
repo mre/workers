@@ -3,6 +3,7 @@ use crate::storage;
 use crate::util::{try_to_extract_panic_info, with_sentry_transaction};
 use anyhow::anyhow;
 use futures_util::FutureExt;
+use rand::Rng;
 use sentry_core::{Hub, SentryFutureExt};
 use sqlx::PgPool;
 use std::panic::AssertUnwindSafe;
@@ -17,9 +18,21 @@ pub(crate) struct Worker<Context> {
     pub(crate) job_registry: Arc<JobRegistry<Context>>,
     pub(crate) shutdown_when_queue_empty: bool,
     pub(crate) poll_interval: Duration,
+    pub(crate) jitter: Duration,
 }
 
 impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
+    /// Calculate the sleep duration with random jitter applied.
+    fn sleep_duration_with_jitter(&self) -> Duration {
+        if self.jitter.is_zero() {
+            return self.poll_interval;
+        }
+
+        let jitter_millis = u64::try_from(self.jitter.as_millis()).unwrap_or(u64::MAX);
+        let random_jitter = rand::thread_rng().gen_range(0..=jitter_millis);
+        self.poll_interval + Duration::from_millis(random_jitter)
+    }
+
     /// Run background jobs forever, or until the queue is empty if `shutdown_when_queue_empty` is set.
     #[allow(clippy::cognitive_complexity)]
     pub(crate) async fn run(&self) {
@@ -31,15 +44,15 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
                     break;
                 }
                 Ok(None) => {
+                    let sleep_duration = self.sleep_duration_with_jitter();
                     trace!(
-                        "No pending background worker jobs found. Polling again in {:?}…",
-                        self.poll_interval
+                        "No pending background worker jobs found. Polling again in {sleep_duration:?}…",
                     );
-                    sleep(self.poll_interval).await;
+                    sleep(sleep_duration).await;
                 }
                 Err(error) => {
                     error!("Failed to run job: {error}");
-                    sleep(self.poll_interval).await;
+                    sleep(self.sleep_duration_with_jitter()).await;
                 }
             }
         }
