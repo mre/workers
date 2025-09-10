@@ -9,7 +9,7 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{Instrument, debug, error, info_span, warn};
+use tracing::{Instrument, debug, error, info_span, trace, warn};
 
 pub(crate) struct Worker<Context> {
     pub(crate) connection_pool: PgPool,
@@ -31,7 +31,7 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
                     break;
                 }
                 Ok(None) => {
-                    debug!(
+                    trace!(
                         "No pending background worker jobs found. Polling again in {:?}…",
                         self.poll_interval
                     );
@@ -59,7 +59,7 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
 
         let job_types = job_registry.job_types();
 
-        debug!("Looking for next background worker job…");
+        trace!("Looking for next background worker job…");
 
         // Start a transaction to hold the job lock during execution
         let mut tx = pool.begin().await?;

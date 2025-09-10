@@ -141,9 +141,48 @@ Failed jobs are automatically retried with exponential backoff. The retry count 
 
 All job execution is instrumented with tracing and optionally reported to Sentry for error monitoring.
 
+## Production Considerations
+
+### Database Polling
+
+The workers poll the database for new jobs at regular intervals (configurable via `poll_interval`). While this is simple and reliable, it does generate constant database queries. For production deployments, consider:
+
+**Tuning Poll Intervals:**
+```rust
+.configure_queue("low_priority", |queue| {
+    queue.poll_interval(Duration::from_secs(30))  // Less frequent polling
+})
+.configure_queue("urgent", |queue| {
+    queue.poll_interval(Duration::from_millis(100))  // More frequent polling
+})
+```
+
 ## Development Setup
 
 This project uses [TestContainers](https://rust.testcontainers.org/) for integration testing, which automatically spins up PostgreSQL containers during test execution.
+
+### Example Usage 
+
+You can run a stress test like so:
+
+```bash
+make stress
+```
+
+Or run with custom parameters
+
+```bash
+cd examples/stress_test
+cargo run --release -- --jobs 500 --workers 12 --duration 60
+```
+
+The stress test is based on a popular monster collecting game. ;)
+It demonstrates a few features:
+
+- Multiple job types: Catch Pokemon, train them, heal at Pokemon Centers, battle gym leaders, and explore new areas
+- Different queue priorities: Healing and gym battles get higher priority than exploration
+- Job deduplication: Training jobs are deduplicated to prevent over-training the same Pokemon
+- Different processing times: Each job type has different duration ranges to simulate real workloads
 
 ### Testing
 

@@ -1,5 +1,5 @@
 # Makefile for workers crate
-.PHONY: help build test check fmt clippy clean doc all ci
+.PHONY: help build test check fmt clippy clean doc all ci stress
 
 # Default target
 all: fmt clippy test
@@ -16,6 +16,7 @@ help:
 	@echo "  doc         - Generate documentation"
 	@echo "  all         - Run fmt, clippy, and test (default)"
 	@echo "  ci          - Run all CI checks (check, clippy, test, fmt-check)"
+	@echo "  stress      - Run Pokemon stress test (demonstrates job processing)"
 	@echo ""
 	@echo "Note: Tests automatically spin up PostgreSQL containers using TestContainers"
 
@@ -83,3 +84,9 @@ fix:
 	cargo fix --allow-dirty --allow-staged
 	cargo clippy --fix --allow-dirty --allow-staged
 	cargo fmt
+
+# Run Pokemon stress test - demonstrates high-throughput job processing
+stress:
+	@echo "Starting Stress Test. Press Ctrl+C to stop early"
+	@echo ""
+	cd examples/stress_test && cargo run --release -- --jobs 200 --duration 45

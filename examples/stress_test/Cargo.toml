@@ -1,0 +1,23 @@
+[package]
+name = "stress_test"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "stress_test"
+path = "src/main.rs"
+
+[dependencies]
+workers = { path = "../.." }
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+num_cpus = "1.0"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.8", features = ["runtime-tokio-native-tls", "postgres", "chrono", "uuid"] }
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
