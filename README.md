@@ -160,6 +160,16 @@ The workers poll the database for new jobs at regular intervals (configurable vi
 })
 ```
 
+### Why Use Polling Instead of LISTEN/NOTIFY?
+
+`PostgreSQL`'s LISTEN/NOTIFY feature seems perfect for real-time job notifications, but we chose polling with jitter instead. Here's why:
+
+- LISTEN/NOTIFY creates thundering herds. When you send one NOTIFY, all workers wake up at once and compete for the same single job. This creates database contention spikes that hurt performance.
+- You still need polling anyway. LISTEN/NOTIFY isn't reliable enough on its own - notifications can be lost during connection drops or server restarts. You end up implementing both systems, which adds complexity.
+- Connection poolers interfere. Production deployments often use `PgBouncer` or similar tools. LISTEN requires persistent connections, which conflicts with connection pool strategies.
+
+The polling approach prevents thundering herds through added jitter, works with any `PostgreSQL` setup, is simple and reliable (no missed notifications) and easy to tune for your workload (e.g. few or many jobs). Feel free to open an issue if we're missing anything. 
+
 ## Development Setup
 
 This project uses [TestContainers](https://rust.testcontainers.org/) for integration testing, which automatically spins up `PostgreSQL` containers during test execution.
