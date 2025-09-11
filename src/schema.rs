@@ -24,3 +24,13 @@ pub struct BackgroundJob {
     /// Priority of the job (higher = more important)
     pub priority: i16,
 }
+
+/// Represents an archived job record in the database
+#[derive(Debug, Clone, FromRow)]
+pub struct ArchivedJob {
+    /// The original background job data
+    #[sqlx(flatten)]
+    pub job: BackgroundJob,
+    /// Timestamp when the job was archived
+    pub archived_at: DateTime<Utc>,
+}

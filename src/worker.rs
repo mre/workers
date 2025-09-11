@@ -19,6 +19,7 @@ pub(crate) struct Worker<Context> {
     pub(crate) shutdown_when_queue_empty: bool,
     pub(crate) poll_interval: Duration,
     pub(crate) jitter: Duration,
+    pub(crate) archive_completed_jobs: bool,
 }
 
 impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
@@ -115,8 +116,13 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
         let _enter = span.enter();
         match result {
             Ok(()) => {
-                debug!("Deleting successful job…");
-                storage::delete_successful_job(&mut tx, job_id).await?;
+                if self.archive_completed_jobs {
+                    debug!("Archiving successful job…");
+                    storage::archive_successful_job(&mut tx, job_id).await?;
+                } else {
+                    debug!("Deleting successful job…");
+                    storage::delete_successful_job(&mut tx, job_id).await?;
+                }
                 tx.commit().await?;
             }
             Err(error) => {

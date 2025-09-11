@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tokio::sync::Barrier;
-use workers::{BackgroundJob, Runner};
+use workers::{BackgroundJob, Runner, archived_job_count, get_archived_jobs};
 
 /// Test utilities and common setup
 mod test_utils {
@@ -382,5 +382,65 @@ async fn jitter_configuration_affects_polling() -> anyhow::Result<()> {
     runner_handle.wait_for_shutdown().await;
 
     // Test passes if jitter configuration is accepted and runs without error
+    Ok(())
+}
+
+#[tokio::test]
+async fn archive_functionality_works() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct TestJob {
+        message: String,
+    }
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "test";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            // Job does nothing but succeed
+            Ok(())
+        }
+    }
+
+    async fn remaining_jobs(pool: &PgPool) -> anyhow::Result<i64> {
+        let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM background_jobs")
+            .fetch_one(pool)
+            .await?;
+        Ok(count)
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Configure runner with archiving enabled
+    let runner = Runner::new(pool.clone(), ())
+        .register_job_type::<TestJob>()
+        .configure_queue("default", |queue| {
+            queue.num_workers(1).archive_completed_jobs(true) // Enable archiving
+        })
+        .shutdown_when_queue_empty();
+
+    // Enqueue a test job
+    let job = TestJob {
+        message: "test message".to_string(),
+    };
+    job.enqueue(&pool).await?;
+
+    // Check that we have 1 job in the queue and 0 in archive initially
+    assert_eq!(remaining_jobs(&pool).await?, 1);
+    assert_eq!(archived_job_count(&pool).await?, 0);
+
+    // Run the workers
+    let runner_handle = runner.start();
+    runner_handle.wait_for_shutdown().await;
+
+    // After processing, job should be archived (not deleted)
+    assert_eq!(remaining_jobs(&pool).await?, 0); // No jobs left in queue
+    assert_eq!(archived_job_count(&pool).await?, 1); // 1 job in archive
+
+    // Verify we can retrieve the archived job
+    let archived_jobs = get_archived_jobs(&pool, Some("test"), None).await?;
+    assert_eq!(archived_jobs.len(), 1);
+    assert_eq!(archived_jobs[0].job.job_type, "test");
+
     Ok(())
 }
