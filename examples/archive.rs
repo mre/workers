@@ -17,6 +17,8 @@ use std::time::Duration;
 use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
+use tracing::{debug, info};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use workers::{BackgroundJob, Runner, archived_job_count, get_archived_jobs};
 
 /// Example job that processes user notifications
@@ -32,7 +34,7 @@ impl BackgroundJob for NotificationJob {
     type Context = ();
 
     async fn run(&self, _ctx: Self::Context) -> Result<()> {
-        println!(
+        info!(
             "Sending {} notification to user {}: {}",
             self.notification_type, self.user_id, self.message
         );
@@ -40,7 +42,7 @@ impl BackgroundJob for NotificationJob {
         // Simulate some processing time
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        println!("Notification sent successfully");
+        info!("Notification sent successfully");
         Ok(())
     }
 }
@@ -58,7 +60,7 @@ impl BackgroundJob for PaymentJob {
     type Context = ();
 
     async fn run(&self, _ctx: Self::Context) -> Result<()> {
-        println!(
+        info!(
             "Processing payment: {} {} (ID: {})",
             self.amount, self.currency, self.transaction_id
         );
@@ -66,14 +68,14 @@ impl BackgroundJob for PaymentJob {
         // Simulate payment processing
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        println!("Payment processed successfully");
+        info!("Payment processed successfully");
         Ok(())
     }
 }
 
 /// Set up a PostgreSQL database using TestContainers
 async fn setup_database() -> Result<(PgPool, ContainerAsync<Postgres>)> {
-    println!("Starting PostgreSQL container...");
+    info!("Starting PostgreSQL container...");
     let postgres_image = Postgres::default();
     let container = postgres_image.start().await?;
 
@@ -81,10 +83,10 @@ async fn setup_database() -> Result<(PgPool, ContainerAsync<Postgres>)> {
     let port = container.get_host_port_ipv4(5432).await?;
     let connection_string = format!("postgresql://postgres:postgres@{}:{}/postgres", host, port);
 
-    println!("Connecting to database at {}:{}...", host, port);
+    info!("Connecting to database at {}:{}...", host, port);
     let pool = PgPool::connect(&connection_string).await?;
 
-    println!("Running database migrations...");
+    info!("Running database migrations...");
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     Ok((pool, container))
@@ -92,10 +94,26 @@ async fn setup_database() -> Result<(PgPool, ContainerAsync<Postgres>)> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize tracing with compact formatting
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "warn,archive=info,workers=info".into()),
+        )
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false) // Remove module path
+                .with_thread_ids(false) // Remove thread IDs
+                .compact(), // Use compact format
+        )
+        .init();
+
+    info!("Archive Example Starting!");
+
     // Set up database using TestContainers
     let (pool, _container) = setup_database().await?;
 
-    println!("Starting archive example...\n");
+    info!("Starting archive example...");
 
     // Create runner with archiving enabled for important jobs
     let runner = Runner::new(pool.clone(), ())
@@ -146,41 +164,39 @@ async fn main() -> Result<()> {
         payment.enqueue(&pool).await?;
     }
 
-    println!("Enqueued 4 jobs total\n");
+    info!("Enqueued 4 jobs total");
 
     // Start processing
-    println!("Processing jobs...\n");
+    info!("Processing jobs...");
     let handle = runner.start();
     handle.wait_for_shutdown().await;
 
-    println!("\nAll jobs completed!\n");
+    info!("All jobs completed!");
 
     // Now demonstrate archive functionality
-    println!("Archive Analysis:");
-    println!("=================");
+    info!("Archive Analysis:");
 
     // Get total count of archived jobs
     let total_archived = archived_job_count(&pool).await?;
-    println!("Total archived jobs: {}", total_archived);
+    info!("Total archived jobs: {}", total_archived);
 
     // Get archived notification jobs
     let notification_archives = get_archived_jobs(&pool, Some("notification"), None).await?;
-    println!(
+    info!(
         "Notification jobs archived: {}",
         notification_archives.len()
     );
 
     // Get archived payment jobs
     let payment_archives = get_archived_jobs(&pool, Some("payment"), None).await?;
-    println!("Payment jobs archived: {}", payment_archives.len());
+    info!("Payment jobs archived: {}", payment_archives.len());
 
     // Show details of archived jobs
-    println!("\nArchived Job Details:");
-    println!("====================");
+    info!("Archived Job Details:");
 
     let all_archived = get_archived_jobs(&pool, None, Some(10)).await?;
     for job in all_archived {
-        println!(
+        info!(
             "Job ID: {}, Type: {}, Archived: {}",
             job.job.id,
             job.job.job_type,
@@ -189,15 +205,14 @@ async fn main() -> Result<()> {
 
         // Pretty print the job data
         if let Ok(pretty_data) = serde_json::to_string_pretty(&job.job.data) {
-            println!("   Data: {}", pretty_data.replace('\n', "\n         "));
+            debug!("Data: {:?}", pretty_data);
         }
-        println!();
     }
 
-    println!("Archive example completed! Jobs are preserved for debugging and audit purposes.");
+    info!("Archive example completed! Jobs are preserved for debugging and audit purposes.");
 
     // The PostgreSQL container will be automatically cleaned up when _container is dropped
-    println!("\nCleaning up PostgreSQL container...");
+    info!("Cleaning up PostgreSQL container...");
 
     Ok(())
 }
