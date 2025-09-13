@@ -18,3 +18,7 @@ pub use self::background_job::DEFAULT_QUEUE;
 pub use self::errors::EnqueueError;
 /// The main runner that orchestrates job processing.
 pub use self::runner::Runner;
+/// Database schema types.
+pub use self::schema::{ArchivedJob, BackgroundJob as BackgroundJobRecord};
+/// Archive functionality.
+pub use self::storage::{ArchiveQuery, archived_job_count, get_archived_jobs};

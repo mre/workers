@@ -91,6 +91,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
                     shutdown_when_queue_empty: self.shutdown_when_queue_empty,
                     poll_interval: queue.poll_interval,
                     jitter: queue.jitter,
+                    archive_completed_jobs: queue.archive_completed_jobs,
                 };
 
                 let span = info_span!("worker", worker.name = %name);
@@ -141,6 +142,7 @@ pub struct Queue<Context> {
     num_workers: usize,
     poll_interval: Duration,
     jitter: Duration,
+    archive_completed_jobs: bool,
 }
 
 impl<Context> Default for Queue<Context> {
@@ -150,6 +152,7 @@ impl<Context> Default for Queue<Context> {
             num_workers: 1,
             poll_interval: DEFAULT_POLL_INTERVAL,
             jitter: DEFAULT_JITTER,
+            archive_completed_jobs: false,
         }
     }
 }
@@ -174,6 +177,16 @@ impl<Context> Queue<Context> {
     /// be a random value between 0 and the specified duration.
     pub fn jitter(&mut self, jitter: Duration) -> &mut Self {
         self.jitter = jitter;
+        self
+    }
+
+    /// Set whether completed jobs should be archived instead of deleted.
+    ///
+    /// When enabled, successfully completed jobs are moved to the `archived_jobs`
+    /// table instead of being deleted. This allows for job history tracking,
+    /// debugging, and potential replay functionality.
+    pub fn archive_completed_jobs(&mut self, archive: bool) -> &mut Self {
+        self.archive_completed_jobs = archive;
         self
     }
 }

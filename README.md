@@ -137,6 +137,55 @@ job.enqueue(&mut conn).await?;
 - **Poll interval**: How often workers check for new jobs
 - **Jitter**: Random time added to poll intervals to reduce thundering herd effects (default: 100ms)
 - **Shutdown behavior**: Whether to stop when queue is empty
+- **Archive completed jobs**: Whether to archive successful jobs instead of deleting them
+
+## Job Archiving
+
+By default, successfully completed jobs are deleted from the database. However, you can configure jobs to be archived instead, which moves them to an archive table for debugging, auditing, and potential replay.
+
+```rust,ignore
+use workers::Runner;
+
+let runner = Runner::new(pool, context)
+    .register_job_type::<MyJob>()
+    .configure_queue("important", |queue| {
+        queue.archive_completed_jobs(true)  // Enable archiving
+    });
+```
+
+To query archived jobs:
+
+```rust,no_run
+use workers::{get_archived_jobs, ArchiveQuery, archived_job_count};
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+# let pool = sqlx::PgPool::connect("").await?;
+// Get all archived jobs
+let archived = get_archived_jobs(&pool, ArchiveQuery::All).await?;
+
+// Get archived jobs for a specific job type
+let archived = get_archived_jobs(
+    &pool, 
+    ArchiveQuery::Filter {
+        job_filter: Some("important".to_string()),
+        limit: None,
+    }
+).await?;
+
+// Get archived jobs with limit
+let archived = get_archived_jobs(
+    &pool,
+    ArchiveQuery::Filter {
+        job_filter: Some("important".to_string()),
+        limit: Some(50),
+    }
+).await?;
+
+// Get count of archived jobs
+let count = archived_job_count(&pool).await?;
+# Ok(())
+# }
+```
 
 ## Error Handling
 
