@@ -14,7 +14,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tokio::sync::Barrier;
-use workers::{ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs, setup_database};
+use workers::{
+    ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs, setup_database,
+};
 
 /// Test utilities and common setup
 mod test_utils {
@@ -41,8 +43,9 @@ mod test_utils {
         Ok((pool, container))
     }
 
-    /// Set up a test database using the public setup_database function
-    pub(super) async fn setup_test_db_with_public_api() -> anyhow::Result<(PgPool, ContainerAsync<Postgres>)> {
+    /// Set up a test database using the public `setup_database` function
+    pub(super) async fn setup_test_db_with_public_api()
+    -> anyhow::Result<(PgPool, ContainerAsync<Postgres>)> {
         let postgres_image = Postgres::default();
         let container = postgres_image.start().await?;
 
@@ -114,13 +117,16 @@ async fn test_setup_database_creates_tables() {
     let table_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM information_schema.tables
          WHERE table_name IN ('background_jobs', 'archived_jobs')
-         AND table_schema = 'public'"
+         AND table_schema = 'public'",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
 
-    assert_eq!(table_count, 2, "Expected background_jobs and archived_jobs tables");
+    assert_eq!(
+        table_count, 2,
+        "Expected background_jobs and archived_jobs tables"
+    );
 }
 
 #[tokio::test]
@@ -483,6 +489,225 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
     .await?;
     assert_eq!(archived_jobs.len(), 1);
     assert_eq!(archived_jobs[0].job.job_type, "test");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_enqueue_batch_simple_jobs() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct TestJob {
+        message: String,
+        number: u32,
+    }
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "test_batch";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Create batch of jobs
+    let jobs = vec![
+        TestJob {
+            message: "first".to_string(),
+            number: 1,
+        },
+        TestJob {
+            message: "second".to_string(),
+            number: 2,
+        },
+        TestJob {
+            message: "third".to_string(),
+            number: 3,
+        },
+    ];
+
+    // Enqueue batch
+    let ids = TestJob::enqueue_batch(&jobs, &pool).await?;
+
+    // Should get back 3 job IDs
+    assert_eq!(ids.len(), 3);
+    assert!(ids.iter().all(Option::is_some));
+
+    // Verify jobs are in database
+    let job_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM background_jobs WHERE job_type = $1")
+            .bind("test_batch")
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(job_count, 3);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_enqueue_batch_empty_jobs() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct TestJob {
+        message: String,
+    }
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "test_empty_batch";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Enqueue empty batch
+    let ids = TestJob::enqueue_batch(&[], &pool).await?;
+
+    // Should get back empty vector
+    assert_eq!(ids.len(), 0);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_enqueue_batch_deduplicated_jobs() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct TestJob {
+        message: String,
+    }
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "test_dedup_batch";
+        const DEDUPLICATED: bool = true;
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Create batch with duplicate jobs
+    let jobs = vec![
+        TestJob {
+            message: "unique1".to_string(),
+        },
+        TestJob {
+            message: "unique2".to_string(),
+        },
+        TestJob {
+            message: "unique1".to_string(),
+        }, // Duplicate
+        TestJob {
+            message: "unique3".to_string(),
+        },
+        TestJob {
+            message: "unique2".to_string(),
+        }, // Duplicate
+    ];
+
+    // Enqueue batch
+    let ids = TestJob::enqueue_batch(&jobs, &pool).await?;
+
+    // Should get back 5 results (some None for duplicates)
+    assert_eq!(ids.len(), 5);
+
+    // First occurrence of each unique job should be enqueued
+    assert!(ids[0].is_some()); // unique1
+    assert!(ids[1].is_some()); // unique2
+    assert!(ids[2].is_none()); // duplicate unique1
+    assert!(ids[3].is_some()); // unique3
+    assert!(ids[4].is_none()); // duplicate unique2
+
+    // Verify only 3 unique jobs are in database
+    let job_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM background_jobs WHERE job_type = $1")
+            .bind("test_dedup_batch")
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(job_count, 3);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_batch_enqueue_with_different_priorities() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct HighPriorityJob {
+        message: String,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct LowPriorityJob {
+        message: String,
+    }
+
+    impl BackgroundJob for HighPriorityJob {
+        const JOB_NAME: &'static str = "high_priority_batch";
+        const PRIORITY: i16 = 100;
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl BackgroundJob for LowPriorityJob {
+        const JOB_NAME: &'static str = "low_priority_batch";
+        const PRIORITY: i16 = 1;
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Enqueue high priority jobs
+    let high_jobs = vec![
+        HighPriorityJob {
+            message: "urgent1".to_string(),
+        },
+        HighPriorityJob {
+            message: "urgent2".to_string(),
+        },
+    ];
+    let high_ids = HighPriorityJob::enqueue_batch(&high_jobs, &pool).await?;
+
+    // Enqueue low priority jobs
+    let low_jobs = vec![
+        LowPriorityJob {
+            message: "normal1".to_string(),
+        },
+        LowPriorityJob {
+            message: "normal2".to_string(),
+        },
+    ];
+    let low_ids = LowPriorityJob::enqueue_batch(&low_jobs, &pool).await?;
+
+    assert_eq!(high_ids.len(), 2);
+    assert_eq!(low_ids.len(), 2);
+
+    // Verify priorities are set correctly
+    let high_priorities: Vec<i16> =
+        sqlx::query_scalar("SELECT priority FROM background_jobs WHERE job_type = $1 ORDER BY id")
+            .bind("high_priority_batch")
+            .fetch_all(&pool)
+            .await?;
+    assert!(high_priorities.iter().all(|&p| p == 100));
+
+    let low_priorities: Vec<i16> =
+        sqlx::query_scalar("SELECT priority FROM background_jobs WHERE job_type = $1 ORDER BY id")
+            .bind("low_priority_batch")
+            .fetch_all(&pool)
+            .await?;
+    assert!(low_priorities.iter().all(|&p| p == 1));
 
     Ok(())
 }

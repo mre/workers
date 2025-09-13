@@ -125,6 +125,40 @@ job.enqueue(&mut conn).await?;
 - **Shutdown behavior**: Whether to stop when queue is empty
 - **Archive completed jobs**: Whether to archive successful jobs instead of deleting them
 
+## Batch Operations
+
+For improved throughput in high-volume scenarios, you can enqueue multiple jobs
+of the same type in a single operation. This is more efficient than individual
+`enqueue()` calls as it uses a single database transaction and `PostgreSQL` bulk
+insert operations. Under the hood, this uses `PostgreSQL` arrays with UNNEST for
+bulk insert, handles deduplication with conditional inserts, and uses a single
+transaction for atomicity.
+
+### Batch Enqueuing
+
+```rust,ignore
+use workers::BackgroundJob;
+
+// Create multiple jobs of the same type
+let email_jobs = vec![
+    SendEmailJob { to: "user1@example.com".to_string(), subject: "Welcome!".to_string(), body: "...".to_string() },
+    SendEmailJob { to: "user2@example.com".to_string(), subject: "Welcome!".to_string(), body: "...".to_string() },
+    SendEmailJob { to: "user3@example.com".to_string(), subject: "Welcome!".to_string(), body: "...".to_string() },
+];
+
+// Enqueue all jobs in a single transaction
+let job_ids = SendEmailJob::enqueue_batch(&email_jobs, &pool).await?;
+
+// job_ids contains Option<i64> for each job:
+// - Some(id) for successfully enqueued jobs
+// - None for jobs that were deduplicated (if DEDUPLICATED = true)
+```
+
+You can see this in action with:
+```bash
+cargo run --example batch
+```
+
 ## Job Archiving
 
 By default, successfully completed jobs are deleted from the database. However, you can configure jobs to be archived instead, which moves them to an archive table for debugging, auditing, and potential replay.
@@ -143,13 +177,16 @@ To query archived jobs:
 
 ```rust,no_run
 use workers::{get_archived_jobs, ArchiveQuery, archived_job_count};
+# use sqlx::PgPool;
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+# let pool = PgPool::connect("").await?;
 
 // Get all archived jobs
 let archived = get_archived_jobs(&pool, ArchiveQuery::All).await?;
 
 // Get archived jobs for a specific job type
 let archived = get_archived_jobs(
-    &pool, 
+    &pool,
     ArchiveQuery::Filter {
         job_filter: Some("important".to_string()),
         limit: None,
@@ -167,14 +204,16 @@ let archived = get_archived_jobs(
 
 // Get count of archived jobs
 let count = archived_job_count(&pool).await?;
+# Ok(())
+# }
 ```
 
 ## Database Setup
 
-> [!NOTE]  
+> [!NOTE]\
 >  These migrations only CREATE new tables - your existing data is completely safe.
 
-This library requires some PostgreSQL tables to work. There are a few ways to setup up the DB. 
+This library requires some `PostgreSQL` tables to work. There are a few ways to setup up the DB. 
 
 ### One-line Setup
 
@@ -200,7 +239,7 @@ This embeds the migrations at compile time and is completely self-contained.
 
 ### Option 2: Run SQL directly
 
-Execute the SQL statements in the `migrations` folder on your existing PostgreSQL database.
+Execute the SQL statements in the `migrations` folder on your existing `PostgreSQL` database.
 
 ## Error Handling
 
