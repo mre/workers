@@ -65,6 +65,7 @@ mod test_utils {
     ) -> Runner<Context> {
         Runner::new(pool, context)
             .configure_default_queue(|queue| queue.num_workers(2))
+            .shutdown_when_queue_empty()
     }
 }
 
