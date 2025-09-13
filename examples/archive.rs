@@ -3,7 +3,7 @@
 //! This example demonstrates how to configure job archiving to preserve
 //! completed jobs for debugging, auditing, and analytics purposes.
 //!
-//! This example uses TestContainers to automatically start a PostgreSQL
+//! This example uses `TestContainers` to automatically start a `PostgreSQL`
 //! database, so no manual setup is required. Just run:
 //!
 //! ```bash
@@ -73,7 +73,8 @@ impl BackgroundJob for PaymentJob {
     }
 }
 
-/// Set up a PostgreSQL database using TestContainers
+/// Set up a `PostgreSQL` database using `TestContainers`
+#[allow(clippy::cognitive_complexity)]
 async fn setup_database() -> Result<(PgPool, ContainerAsync<Postgres>)> {
     info!("Starting PostgreSQL container...");
     let postgres_image = Postgres::default();
@@ -81,7 +82,7 @@ async fn setup_database() -> Result<(PgPool, ContainerAsync<Postgres>)> {
 
     let host = container.get_host().await?;
     let port = container.get_host_port_ipv4(5432).await?;
-    let connection_string = format!("postgresql://postgres:postgres@{}:{}/postgres", host, port);
+    let connection_string = format!("postgresql://postgres:postgres@{host}:{port}/postgres");
 
     info!("Connecting to database at {}:{}...", host, port);
     let pool = PgPool::connect(&connection_string).await?;
@@ -110,7 +111,7 @@ async fn main() -> Result<()> {
 
     info!("Archive Example Starting!");
 
-    // Set up database using TestContainers
+    // Set up database using `TestContainers`
     let (pool, _container) = setup_database().await?;
 
     info!("Starting archive example...");
