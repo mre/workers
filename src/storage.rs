@@ -79,7 +79,7 @@ pub(crate) async fn archive_successful_job(
     .execute(&mut **tx)
     .await?;
 
-    // Delete from background_jobs table
+    // Delete from background_jobs table in same transaction
     sqlx::query("DELETE FROM background_jobs WHERE id = $1")
         .bind(job_id)
         .execute(&mut **tx)

@@ -21,12 +21,18 @@ use tracing::{debug, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use workers::{BackgroundJob, Runner, archived_job_count, get_archived_jobs};
 
+#[derive(Debug, Serialize, Deserialize)]
+enum Notification {
+    Welcome,
+    Shipping,
+}
+
 /// Example job that processes user notifications
 #[derive(Serialize, Deserialize)]
 struct NotificationJob {
     user_id: u64,
     message: String,
-    notification_type: String,
+    notification_type: Notification,
 }
 
 impl BackgroundJob for NotificationJob {
@@ -35,7 +41,7 @@ impl BackgroundJob for NotificationJob {
 
     async fn run(&self, _ctx: Self::Context) -> Result<()> {
         info!(
-            "Sending {} notification to user {}: {}",
+            "Sending {:?} notification to user {}: {}",
             self.notification_type, self.user_id, self.message
         );
 
@@ -133,12 +139,12 @@ async fn main() -> Result<()> {
         NotificationJob {
             user_id: 123,
             message: "Welcome to our platform!".to_string(),
-            notification_type: "welcome".to_string(),
+            notification_type: Notification::Welcome,
         },
         NotificationJob {
             user_id: 456,
             message: "Your order has been shipped".to_string(),
-            notification_type: "shipping".to_string(),
+            notification_type: Notification::Shipping,
         },
     ];
 
