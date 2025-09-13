@@ -47,20 +47,6 @@ When a worker picks up a job from the database, the table row is immediately loc
 
 Once job execution completes successfully, the row is deleted from the table. If the job fails, the row remains with updated retry information for future processing attempts.
 
-## Database Schema
-
-```sql
-CREATE TABLE background_jobs (
-    id BIGSERIAL PRIMARY KEY,
-    job_type TEXT NOT NULL,
-    data JSONB NOT NULL,
-    retries INTEGER NOT NULL DEFAULT 0,
-    last_retry TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    priority SMALLINT NOT NULL DEFAULT 0
-);
-```
-
 ## Usage
 
 ### Defining a Job
@@ -186,6 +172,39 @@ let count = archived_job_count(&pool).await?;
 # Ok(())
 # }
 ```
+
+## Database Setup
+
+> [!NOTE]  
+>  These migrations only CREATE new tables - your existing data is completely safe.
+
+This library requires some PostgreSQL tables to work. There are a few ways to setup up the DB. 
+
+### One-line Setup
+
+The easiest way is to use the built-in setup function:
+
+```rust,no_run
+use sqlx::PgPool;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let pool = PgPool::connect("postgresql://user:pass@localhost/db").await?;
+    
+    // One-line database setup - safe to call multiple times
+    // Under the hood, this runs `sqlx::migrate`
+    workers::setup_database(&pool).await?;
+    
+    // Now you can use the workers library...
+    Ok(())
+}
+```
+
+This embeds the migrations at compile time and is completely self-contained.
+
+### Option 2: Run SQL directly
+
+Execute the SQL statements in the `migrations` folder on your existing PostgreSQL database.
 
 ## Error Handling
 

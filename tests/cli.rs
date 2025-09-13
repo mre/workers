@@ -14,14 +14,14 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tokio::sync::Barrier;
-use workers::{ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs};
+use workers::{ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs, setup_database};
 
 /// Test utilities and common setup
 mod test_utils {
     use super::*;
     use testcontainers::runners::AsyncRunner;
 
-    /// Set up a test database with `TestContainers` and return the pool and container  
+    /// Set up a test database with `TestContainers` and return the pool and container
     pub(super) async fn setup_test_db() -> anyhow::Result<(PgPool, ContainerAsync<Postgres>)> {
         let postgres_image = Postgres::default();
         let container = postgres_image.start().await?;
@@ -41,6 +41,23 @@ mod test_utils {
         Ok((pool, container))
     }
 
+    /// Set up a test database using the public setup_database function
+    pub(super) async fn setup_test_db_with_public_api() -> anyhow::Result<(PgPool, ContainerAsync<Postgres>)> {
+        let postgres_image = Postgres::default();
+        let container = postgres_image.start().await?;
+
+        let host = container.get_host().await?;
+        let port = container.get_host_port_ipv4(5432).await?;
+        let connection_string = format!("postgresql://postgres:postgres@{host}:{port}/postgres");
+
+        let pool = PgPool::connect(&connection_string).await?;
+
+        // Use the public API instead of direct migrations
+        setup_database(&pool).await?;
+
+        Ok((pool, container))
+    }
+
     /// Create a test runner with common configuration
     pub(super) fn create_test_runner<Context: Clone + Send + Sync + 'static>(
         pool: PgPool,
@@ -48,7 +65,6 @@ mod test_utils {
     ) -> Runner<Context> {
         Runner::new(pool, context)
             .configure_default_queue(|queue| queue.num_workers(2))
-            .shutdown_when_queue_empty()
     }
 }
 
@@ -86,6 +102,24 @@ async fn job_is_locked(id: i64, pool: &PgPool) -> anyhow::Result<bool> {
     .await?;
 
     Ok(result.is_none())
+}
+
+// Database setup tests
+#[tokio::test]
+async fn test_setup_database_creates_tables() {
+    let (pool, _container) = test_utils::setup_test_db_with_public_api().await.unwrap();
+
+    // Verify basic tables exist
+    let table_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM information_schema.tables
+         WHERE table_name IN ('background_jobs', 'archived_jobs')
+         AND table_schema = 'public'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(table_count, 2, "Expected background_jobs and archived_jobs tables");
 }
 
 #[tokio::test]

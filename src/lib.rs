@@ -22,3 +22,27 @@ pub use self::runner::Runner;
 pub use self::schema::{ArchivedJob, BackgroundJob as BackgroundJobRecord};
 /// Archive functionality.
 pub use self::storage::{ArchiveQuery, archived_job_count, get_archived_jobs};
+
+/// Database setup
+///
+/// Sets up the required database tables for the workers library.
+/// This function is idempotent - it's safe to call multiple times.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use sqlx::PgPool;
+/// use workers::setup_database;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let pool = PgPool::connect("postgresql://user:pass@localhost/db").await?;
+///     setup_database(&pool).await?;
+///     
+///     // Now you can use the workers library...
+///     Ok(())
+/// }
+/// ```
+pub async fn setup_database(pool: &sqlx::PgPool) -> Result<(), sqlx::migrate::MigrateError> {
+    sqlx::migrate!("./migrations").run(pool).await
+}

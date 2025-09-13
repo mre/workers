@@ -1,5 +1,5 @@
 -- Create archived_jobs table for job archive system
-CREATE TABLE archived_jobs (
+CREATE TABLE IF NOT EXISTS archived_jobs (
     id BIGINT NOT NULL, -- Original job ID from background_jobs
     job_type TEXT NOT NULL,
     data JSONB NOT NULL,
@@ -12,6 +12,6 @@ CREATE TABLE archived_jobs (
 );
 
 -- Create indexes for efficient archive querying
-CREATE INDEX idx_archived_jobs_job_type ON archived_jobs(job_type);
-CREATE INDEX idx_archived_jobs_archived_at ON archived_jobs(archived_at DESC);
-CREATE INDEX idx_archived_jobs_created_at ON archived_jobs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_archived_jobs_job_type ON archived_jobs(job_type);
+CREATE INDEX IF NOT EXISTS idx_archived_jobs_archived_at ON archived_jobs(archived_at DESC);
+CREATE INDEX IF NOT EXISTS idx_archived_jobs_created_at ON archived_jobs(created_at DESC);
