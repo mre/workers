@@ -167,7 +167,7 @@ let archived = get_archived_jobs(&pool, ArchiveQuery::All).await?;
 let archived = get_archived_jobs(
     &pool, 
     ArchiveQuery::Filter {
-        job_type: Some("important".to_string()),
+        job_filter: Some("important".to_string()),
         limit: None,
     }
 ).await?;
@@ -176,7 +176,7 @@ let archived = get_archived_jobs(
 let archived = get_archived_jobs(
     &pool,
     ArchiveQuery::Filter {
-        job_type: Some("important".to_string()),
+        job_filter: Some("important".to_string()),
         limit: Some(50),
     }
 ).await?;

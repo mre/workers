@@ -441,7 +441,7 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
     let archived_jobs = get_archived_jobs(
         &pool,
         ArchiveQuery::Filter {
-            job_type: Some("test".to_string()),
+            job_filter: Some("test".to_string()),
             limit: None,
         },
     )

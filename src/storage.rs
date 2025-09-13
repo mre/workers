@@ -9,7 +9,7 @@ pub enum ArchiveQuery {
     /// Get archived jobs with filters
     Filter {
         /// Filter by job type
-        job_type: Option<String>,
+        job_filter: Option<String>,
         /// Limit number of results
         limit: Option<i64>,
     },
@@ -117,8 +117,8 @@ pub async fn get_archived_jobs(
         ArchiveQuery::All => {
             // No filters
         }
-        ArchiveQuery::Filter { job_type, .. } => {
-            if let Some(job_type_val) = job_type {
+        ArchiveQuery::Filter { job_filter, .. } => {
+            if let Some(job_type_val) = job_filter {
                 query.push(" WHERE job_type = ");
                 query.push_bind(job_type_val);
             }

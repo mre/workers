@@ -192,7 +192,7 @@ async fn main() -> Result<()> {
     let notification_archives = get_archived_jobs(
         &pool,
         ArchiveQuery::Filter {
-            job_type: Some("notification".to_string()),
+            job_filter: Some("notification".to_string()),
             limit: None,
         },
     )
@@ -206,7 +206,7 @@ async fn main() -> Result<()> {
     let payment_archives = get_archived_jobs(
         &pool,
         ArchiveQuery::Filter {
-            job_type: Some("payment".to_string()),
+            job_filter: Some("payment".to_string()),
             limit: None,
         },
     )
@@ -219,7 +219,7 @@ async fn main() -> Result<()> {
     let all_archived = get_archived_jobs(
         &pool,
         ArchiveQuery::Filter {
-            job_type: None,
+            job_filter: None,
             limit: Some(10),
         },
     )
