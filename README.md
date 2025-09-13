@@ -144,8 +144,6 @@ To query archived jobs:
 ```rust,no_run
 use workers::{get_archived_jobs, ArchiveQuery, archived_job_count};
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
-# let pool = sqlx::PgPool::connect("").await?;
 // Get all archived jobs
 let archived = get_archived_jobs(&pool, ArchiveQuery::All).await?;
 
@@ -169,8 +167,6 @@ let archived = get_archived_jobs(
 
 // Get count of archived jobs
 let count = archived_job_count(&pool).await?;
-# Ok(())
-# }
 ```
 
 ## Database Setup
