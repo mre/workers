@@ -94,33 +94,28 @@ pub async fn get_archived_jobs(
     job_type: Option<&str>,
     limit: Option<i64>,
 ) -> Result<Vec<ArchivedJob>, sqlx::Error> {
-    let mut query = "SELECT id, job_type, data, retries, last_retry, created_at, archived_at, priority FROM archived_jobs".to_string();
-
-    if job_type.is_some() {
-        query.push_str(" WHERE job_type = $1");
-    }
-
-    query.push_str(" ORDER BY archived_at DESC");
-
-    if limit.is_some() {
-        if job_type.is_some() {
-            query.push_str(" LIMIT $2");
-        } else {
-            query.push_str(" LIMIT $1");
-        }
-    }
-
-    let mut query_builder = sqlx::query_as::<_, ArchivedJob>(&query);
+    use sqlx::QueryBuilder;
+    
+    let mut query = QueryBuilder::new(
+        "SELECT id, job_type, data, retries, last_retry, created_at, archived_at, priority FROM archived_jobs"
+    );
 
     if let Some(job_type_val) = job_type {
-        query_builder = query_builder.bind(job_type_val);
+        query.push(" WHERE job_type = ");
+        query.push_bind(job_type_val);
     }
+
+    query.push(" ORDER BY archived_at DESC");
 
     if let Some(limit_val) = limit {
-        query_builder = query_builder.bind(limit_val);
+        query.push(" LIMIT ");
+        query.push_bind(limit_val);
     }
 
-    query_builder.fetch_all(pool).await
+    query
+        .build_query_as::<ArchivedJob>()
+        .fetch_all(pool)
+        .await
 }
 
 /// Get count of archived jobs
