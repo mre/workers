@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tokio::sync::Barrier;
-use workers::{BackgroundJob, Runner, archived_job_count, get_archived_jobs};
+use workers::{ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs};
 
 /// Test utilities and common setup
 mod test_utils {
@@ -438,7 +438,14 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
     assert_eq!(archived_job_count(&pool).await?, 1); // 1 job in archive
 
     // Verify we can retrieve the archived job
-    let archived_jobs = get_archived_jobs(&pool, Some("test"), None).await?;
+    let archived_jobs = get_archived_jobs(
+        &pool,
+        ArchiveQuery::Filter {
+            job_type: Some("test".to_string()),
+            limit: None,
+        },
+    )
+    .await?;
     assert_eq!(archived_jobs.len(), 1);
     assert_eq!(archived_jobs[0].job.job_type, "test");
 

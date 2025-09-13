@@ -156,15 +156,30 @@ let runner = Runner::new(pool, context)
 To query archived jobs:
 
 ```rust,no_run
-use workers::{get_archived_jobs, archived_job_count};
+use workers::{get_archived_jobs, ArchiveQuery, archived_job_count};
 
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 # let pool = sqlx::PgPool::connect("").await?;
 // Get all archived jobs
-let archived = get_archived_jobs(&pool, None, None).await?;
+let archived = get_archived_jobs(&pool, ArchiveQuery::All).await?;
 
 // Get archived jobs for a specific job type
-let archived = get_archived_jobs(&pool, Some("important"), None).await?;
+let archived = get_archived_jobs(
+    &pool, 
+    ArchiveQuery::Filter {
+        job_type: Some("important".to_string()),
+        limit: None,
+    }
+).await?;
+
+// Get archived jobs with limit
+let archived = get_archived_jobs(
+    &pool,
+    ArchiveQuery::Filter {
+        job_type: Some("important".to_string()),
+        limit: Some(50),
+    }
+).await?;
 
 // Get count of archived jobs
 let count = archived_job_count(&pool).await?;

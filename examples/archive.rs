@@ -19,7 +19,7 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 use tracing::{debug, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use workers::{BackgroundJob, Runner, archived_job_count, get_archived_jobs};
+use workers::{ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs};
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Notification {
@@ -100,6 +100,7 @@ async fn setup_database() -> Result<(PgPool, ContainerAsync<Postgres>)> {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<()> {
     // Initialize tracing with compact formatting
     tracing_subscriber::registry()
@@ -188,20 +189,41 @@ async fn main() -> Result<()> {
     info!("Total archived jobs: {}", total_archived);
 
     // Get archived notification jobs
-    let notification_archives = get_archived_jobs(&pool, Some("notification"), None).await?;
+    let notification_archives = get_archived_jobs(
+        &pool,
+        ArchiveQuery::Filter {
+            job_type: Some("notification".to_string()),
+            limit: None,
+        },
+    )
+    .await?;
     info!(
         "Notification jobs archived: {}",
         notification_archives.len()
     );
 
     // Get archived payment jobs
-    let payment_archives = get_archived_jobs(&pool, Some("payment"), None).await?;
+    let payment_archives = get_archived_jobs(
+        &pool,
+        ArchiveQuery::Filter {
+            job_type: Some("payment".to_string()),
+            limit: None,
+        },
+    )
+    .await?;
     info!("Payment jobs archived: {}", payment_archives.len());
 
-    // Show details of archived jobs
+    // Show details of archived jobs (using standalone function)
     info!("Archived Job Details:");
 
-    let all_archived = get_archived_jobs(&pool, None, Some(10)).await?;
+    let all_archived = get_archived_jobs(
+        &pool,
+        ArchiveQuery::Filter {
+            job_type: None,
+            limit: Some(10),
+        },
+    )
+    .await?;
     for job in all_archived {
         info!(
             "Job ID: {}, Type: {}, Archived: {}",

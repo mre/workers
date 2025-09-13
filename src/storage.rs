@@ -1,6 +1,20 @@
 use crate::schema::{ArchivedJob, BackgroundJob};
 use sqlx::{PgPool, Postgres, Transaction};
 
+/// Query options for archived jobs
+#[derive(Debug, Clone)]
+pub enum ArchiveQuery {
+    /// Get all archived jobs
+    All,
+    /// Get archived jobs with filters
+    Filter {
+        /// Filter by job type
+        job_type: Option<String>,
+        /// Limit number of results
+        limit: Option<i64>,
+    },
+}
+
 /// The number of jobs that have failed at least once
 pub(crate) async fn failed_job_count(pool: &PgPool) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM background_jobs WHERE retries > 0")
@@ -88,34 +102,44 @@ pub(crate) async fn archive_successful_job(
     Ok(())
 }
 
-/// Get archived jobs for a specific job type
+/// Get archived jobs with query options
 pub async fn get_archived_jobs(
     pool: &PgPool,
-    job_type: Option<&str>,
-    limit: Option<i64>,
+    query_type: ArchiveQuery,
 ) -> Result<Vec<ArchivedJob>, sqlx::Error> {
     use sqlx::QueryBuilder;
-    
+
     let mut query = QueryBuilder::new(
-        "SELECT id, job_type, data, retries, last_retry, created_at, archived_at, priority FROM archived_jobs"
+        "SELECT id, job_type, data, retries, last_retry, created_at, archived_at, priority FROM archived_jobs",
     );
 
-    if let Some(job_type_val) = job_type {
-        query.push(" WHERE job_type = ");
-        query.push_bind(job_type_val);
+    match &query_type {
+        ArchiveQuery::All => {
+            // No filters
+        }
+        ArchiveQuery::Filter { job_type, .. } => {
+            if let Some(job_type_val) = job_type {
+                query.push(" WHERE job_type = ");
+                query.push_bind(job_type_val);
+            }
+        }
     }
 
     query.push(" ORDER BY archived_at DESC");
 
-    if let Some(limit_val) = limit {
-        query.push(" LIMIT ");
-        query.push_bind(limit_val);
+    match &query_type {
+        ArchiveQuery::All => {
+            // No limit
+        }
+        ArchiveQuery::Filter { limit, .. } => {
+            if let Some(limit_val) = limit {
+                query.push(" LIMIT ");
+                query.push_bind(*limit_val);
+            }
+        }
     }
 
-    query
-        .build_query_as::<ArchivedJob>()
-        .fetch_all(pool)
-        .await
+    query.build_query_as::<ArchivedJob>().fetch_all(pool).await
 }
 
 /// Get count of archived jobs

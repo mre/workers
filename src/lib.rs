@@ -21,4 +21,4 @@ pub use self::runner::Runner;
 /// Database schema types.
 pub use self::schema::{ArchivedJob, BackgroundJob as BackgroundJobRecord};
 /// Archive functionality.
-pub use self::storage::{archived_job_count, get_archived_jobs};
+pub use self::storage::{ArchiveQuery, archived_job_count, get_archived_jobs};
