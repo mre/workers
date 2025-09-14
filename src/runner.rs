@@ -91,7 +91,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
                     shutdown_when_queue_empty: self.shutdown_when_queue_empty,
                     poll_interval: queue.poll_interval,
                     jitter: queue.jitter,
-                    retention: queue.retention.clone(),
+                    archive_completed_jobs: queue.retention != Retention::None,
                 };
 
                 let span = info_span!("worker", worker.name = %name);
