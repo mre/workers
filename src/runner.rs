@@ -195,9 +195,9 @@ pub enum Retention {
     /// Move successfully completed jobs to the `archived_jobs` table instead of deleting them
     Forever,
     /// Same as `Retention::Forever`, but periodically clean up the `archived_jobs` table
-    Policy {
+    Limited {
         /// Interval at which to run
-        run_every: Duration,
+        cleanup_every: Duration,
         /// How many records to keep
         keep_at_most: usize,
         /// Discard records that are older than the specified duration
