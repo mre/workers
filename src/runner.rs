@@ -91,7 +91,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
                     shutdown_when_queue_empty: self.shutdown_when_queue_empty,
                     poll_interval: queue.poll_interval,
                     jitter: queue.jitter,
-                    archive_completed_jobs: queue.archive_completed_jobs,
+                    retention: queue.retention.clone(),
                 };
 
                 let span = info_span!("worker", worker.name = %name);
@@ -142,7 +142,7 @@ pub struct Queue<Context> {
     num_workers: usize,
     poll_interval: Duration,
     jitter: Duration,
-    archive_completed_jobs: bool,
+    retention: Retention,
 }
 
 impl<Context> Default for Queue<Context> {
@@ -152,7 +152,7 @@ impl<Context> Default for Queue<Context> {
             num_workers: 1,
             poll_interval: DEFAULT_POLL_INTERVAL,
             jitter: DEFAULT_JITTER,
-            archive_completed_jobs: false,
+            retention: Retention::default(),
         }
     }
 }
@@ -180,13 +180,34 @@ impl<Context> Queue<Context> {
         self
     }
 
-    /// Set whether completed jobs should be archived instead of deleted.
-    ///
-    /// When enabled, successfully completed jobs are moved to the `archived_jobs`
-    /// table instead of being deleted. This allows for job history tracking,
-    /// debugging, and potential replay functionality.
-    pub fn archive_completed_jobs(&mut self, archive: bool) -> &mut Self {
-        self.archive_completed_jobs = archive;
+    /// Set the retention strategy for completed jobs
+    pub fn retention(&mut self, retention: Retention) -> &mut Self {
+        self.retention = retention;
         self
+    }
+}
+
+/// Configuration for queue retention
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Retention {
+    /// Do not archive any completed jobs
+    None,
+    /// Move successfully completed jobs to the `archived_jobs` table instead of deleting them
+    Forever,
+    /// Same as `Retention::Forever`, but periodically clean up the `archived_jobs` table
+    Policy {
+        /// Interval at which to run
+        run_every: Duration,
+        /// How many records to keep
+        keep_at_most: usize,
+        /// Discard records that are older than the specified duration
+        /// By default,
+        remove_older_than: Option<Duration>,
+    },
+}
+
+impl Default for Retention {
+    fn default() -> Self {
+        Self::None
     }
 }
