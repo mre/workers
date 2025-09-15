@@ -1,5 +1,8 @@
 # workers
 
+[![docs.rs](https://docs.rs/workers/badge.svg)](https://docs.rs/workers)
+[![CI](https://github.com/mre/workers/actions/workflows/ci.yml/badge.svg)](https://github.com/mre/workers/actions/workflows/ci.yml)
+
 A robust async PostgreSQL-backed background job processing system.
 
 ## Overview
