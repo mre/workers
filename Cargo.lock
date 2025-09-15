@@ -3051,7 +3051,7 @@ dependencies = [
  "claims",
  "futures-util",
  "insta",
- "rand 0.8.5",
+ "rand 0.9.2",
  "sentry-core",
  "serde",
  "serde_json",
