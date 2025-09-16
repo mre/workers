@@ -30,7 +30,7 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
         }
 
         let jitter_millis = u64::try_from(self.jitter.as_millis()).unwrap_or(u64::MAX);
-        let random_jitter = rand::thread_rng().gen_range(0..=jitter_millis);
+        let random_jitter = rand::rng().random_range(0..=jitter_millis);
         self.poll_interval + Duration::from_millis(random_jitter)
     }
 

@@ -20,14 +20,14 @@ thiserror = "2.0"
 tokio = { version = "1.47", features = ["rt", "time"] }
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
-rand = "0.8"
+rand = "0.9"
 
 [dev-dependencies]
 claims = "0.8"
 insta = { version = "1.43", features = ["json"] }
 tokio = { version = "1.47", features = ["macros", "sync"] }
-testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+testcontainers = "0.25"
+testcontainers-modules = { version = "0.13", features = ["postgres"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints.rust]
