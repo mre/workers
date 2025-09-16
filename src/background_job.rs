@@ -16,7 +16,7 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// Unique name of the task.
     ///
     /// This MUST be unique for the whole application.
-    const JOB_NAME: &'static str;
+    const JOB_TYPE: &'static str;
 
     /// Default priority of the task.
     ///
@@ -41,7 +41,7 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// Enqueue this job for background execution.
     ///
     /// Returns the job ID if successfully enqueued, or None if deduplicated.
-    #[instrument(name = "workers.enqueue", skip(self, pool), fields(message = Self::JOB_NAME))]
+    #[instrument(name = "workers.enqueue", skip(self, pool), fields(message = Self::JOB_TYPE))]
     fn enqueue<'a>(&'a self, pool: &'a PgPool) -> BoxFuture<'a, Result<Option<i64>, EnqueueError>> {
         let data = match serde_json::to_value(self) {
             Ok(data) => data,
@@ -50,10 +50,10 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
         let priority = Self::PRIORITY;
 
         if Self::DEDUPLICATED {
-            let future = enqueue_deduplicated(pool, Self::JOB_NAME, data, priority);
+            let future = enqueue_deduplicated(pool, Self::JOB_TYPE, data, priority);
             future.boxed()
         } else {
-            let future = enqueue_simple(pool, Self::JOB_NAME, data, priority);
+            let future = enqueue_simple(pool, Self::JOB_TYPE, data, priority);
             async move { Ok(Some(future.await?)) }.boxed()
         }
     }
@@ -81,7 +81,7 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// ];
     /// let ids = SendEmailJob::enqueue_batch(&jobs, &pool).await?;
     /// ```
-    #[instrument(name = "workers.enqueue_batch", skip(jobs, pool), fields(message = Self::JOB_NAME, count = jobs.len()))]
+    #[instrument(name = "workers.enqueue_batch", skip(jobs, pool), fields(message = Self::JOB_TYPE, count = jobs.len()))]
     fn enqueue_batch<'a>(
         jobs: &'a [Self],
         pool: &'a PgPool,
@@ -101,7 +101,7 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
             }
         }
 
-        let job_type = Self::JOB_NAME;
+        let job_type = Self::JOB_TYPE;
         let priority = Self::PRIORITY;
         let is_deduplicated = Self::DEDUPLICATED;
 

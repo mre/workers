@@ -31,7 +31,7 @@ impl<Context> Default for JobRegistry<Context> {
 impl<Context: Clone + Send + Sync + 'static> JobRegistry<Context> {
     pub(crate) fn register<J: BackgroundJob<Context = Context>>(&mut self) {
         self.entries
-            .insert(J::JOB_NAME.to_string(), Arc::new(runnable::<J>));
+            .insert(J::JOB_TYPE.to_string(), Arc::new(runnable::<J>));
     }
 
     pub(crate) fn get(&self, key: &str) -> Option<&Arc<RunTaskFn<Context>>> {
@@ -63,7 +63,7 @@ mod tests {
         struct TestJob;
 
         impl BackgroundJob for TestJob {
-            const JOB_NAME: &'static str = "test";
+            const JOB_TYPE: &'static str = "test";
             type Context = ();
             async fn run(&self, _: Self::Context) -> anyhow::Result<()> {
                 Ok(())

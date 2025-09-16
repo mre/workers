@@ -22,7 +22,7 @@ pub struct CatchPokemonJob {
 }
 
 impl BackgroundJob for CatchPokemonJob {
-    const JOB_NAME: &'static str = "catch_pokemon";
+    const JOB_TYPE: &'static str = "catch_pokemon";
     const PRIORITY: i16 = 10; // Higher priority for catching!
     const QUEUE: &'static str = "field_work";
     type Context = PokemonContext;
@@ -74,7 +74,7 @@ pub struct TrainPokemonJob {
 }
 
 impl BackgroundJob for TrainPokemonJob {
-    const JOB_NAME: &'static str = "train_pokemon";
+    const JOB_TYPE: &'static str = "train_pokemon";
     const PRIORITY: i16 = 5;
     const QUEUE: &'static str = "training";
     const DEDUPLICATED: bool = true; // Don't train the same Pokemon multiple times
@@ -111,7 +111,7 @@ pub struct HealPokemonJob {
 }
 
 impl BackgroundJob for HealPokemonJob {
-    const JOB_NAME: &'static str = "heal_pokemon";
+    const JOB_TYPE: &'static str = "heal_pokemon";
     const PRIORITY: i16 = 15; // Healing is urgent!
     const QUEUE: &'static str = "pokemon_center";
     type Context = PokemonContext;
@@ -146,7 +146,7 @@ pub struct GymBattleJob {
 }
 
 impl BackgroundJob for GymBattleJob {
-    const JOB_NAME: &'static str = "gym_battle";
+    const JOB_TYPE: &'static str = "gym_battle";
     const PRIORITY: i16 = 20; // Gym battles are the highest priority!
     const QUEUE: &'static str = "gym_battles";
     type Context = PokemonContext;
@@ -190,7 +190,7 @@ pub struct ExploreAreaJob {
 }
 
 impl BackgroundJob for ExploreAreaJob {
-    const JOB_NAME: &'static str = "explore_area";
+    const JOB_TYPE: &'static str = "explore_area";
     const PRIORITY: i16 = 3;
     const QUEUE: &'static str = "exploration";
     type Context = PokemonContext;

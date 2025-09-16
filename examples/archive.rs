@@ -36,7 +36,7 @@ struct NotificationJob {
 }
 
 impl BackgroundJob for NotificationJob {
-    const JOB_NAME: &'static str = "notification";
+    const JOB_TYPE: &'static str = "notification";
     type Context = ();
 
     async fn run(&self, _ctx: Self::Context) -> Result<()> {
@@ -62,7 +62,7 @@ struct PaymentJob {
 }
 
 impl BackgroundJob for PaymentJob {
-    const JOB_NAME: &'static str = "payment";
+    const JOB_TYPE: &'static str = "payment";
     type Context = ();
 
     async fn run(&self, _ctx: Self::Context) -> Result<()> {

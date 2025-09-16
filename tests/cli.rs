@@ -141,7 +141,7 @@ async fn jobs_are_locked_when_fetched() -> anyhow::Result<()> {
     struct TestJob;
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test";
+        const JOB_TYPE: &'static str = "test";
         type Context = TestContext;
 
         async fn run(&self, ctx: Self::Context) -> anyhow::Result<()> {
@@ -186,7 +186,7 @@ async fn jobs_are_deleted_when_successfully_run() -> anyhow::Result<()> {
     struct TestJob;
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test";
+        const JOB_TYPE: &'static str = "test";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
@@ -228,7 +228,7 @@ async fn failed_jobs_do_not_release_lock_before_updating_retry_time() -> anyhow:
     struct TestJob;
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test";
+        const JOB_TYPE: &'static str = "test";
         type Context = TestContext;
 
         async fn run(&self, ctx: Self::Context) -> anyhow::Result<()> {
@@ -279,7 +279,7 @@ async fn panicking_in_jobs_updates_retry_counter() -> anyhow::Result<()> {
     struct TestJob;
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test";
+        const JOB_TYPE: &'static str = "test";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
@@ -329,7 +329,7 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
     }
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test";
+        const JOB_TYPE: &'static str = "test";
         const DEDUPLICATED: bool = true;
         type Context = TestContext;
 
@@ -397,7 +397,7 @@ async fn jitter_configuration_affects_polling() -> anyhow::Result<()> {
     struct TestJob;
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "jitter_test";
+        const JOB_TYPE: &'static str = "jitter_test";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
@@ -434,7 +434,7 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
     }
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test";
+        const JOB_TYPE: &'static str = "test";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
@@ -502,7 +502,7 @@ async fn test_enqueue_batch_simple_jobs() -> anyhow::Result<()> {
     }
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test_batch";
+        const JOB_TYPE: &'static str = "test_batch";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
@@ -554,7 +554,7 @@ async fn test_enqueue_batch_empty_jobs() -> anyhow::Result<()> {
     }
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test_empty_batch";
+        const JOB_TYPE: &'static str = "test_empty_batch";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
@@ -581,7 +581,7 @@ async fn test_enqueue_batch_deduplicated_jobs() -> anyhow::Result<()> {
     }
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test_dedup_batch";
+        const JOB_TYPE: &'static str = "test_dedup_batch";
         const DEDUPLICATED: bool = true;
         type Context = ();
 
@@ -648,7 +648,7 @@ async fn test_batch_enqueue_with_different_priorities() -> anyhow::Result<()> {
     }
 
     impl BackgroundJob for HighPriorityJob {
-        const JOB_NAME: &'static str = "high_priority_batch";
+        const JOB_TYPE: &'static str = "high_priority_batch";
         const PRIORITY: i16 = 100;
         type Context = ();
 
@@ -658,7 +658,7 @@ async fn test_batch_enqueue_with_different_priorities() -> anyhow::Result<()> {
     }
 
     impl BackgroundJob for LowPriorityJob {
-        const JOB_NAME: &'static str = "low_priority_batch";
+        const JOB_TYPE: &'static str = "low_priority_batch";
         const PRIORITY: i16 = 1;
         type Context = ();
 

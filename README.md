@@ -63,7 +63,7 @@ struct SendEmailJob {
 }
 
 impl BackgroundJob for SendEmailJob {
-    const JOB_NAME: &'static str = "send_email";
+    const JOB_TYPE: &'static str = "send_email";
     const PRIORITY: i16 = 10;
     const DEDUPLICATED: bool = false;
     const QUEUE: &'static str = "emails";
@@ -112,7 +112,7 @@ job.enqueue(&mut conn).await?;
 
 ### Job Properties
 
-- **`JOB_NAME`**: Unique identifier for the job type
+- **`JOB_TYPE`**: Unique identifier for the job type
 - **`PRIORITY`**: Execution priority (higher values = higher priority)
 - **`DEDUPLICATED`**: Whether to prevent duplicate jobs with identical data
 - **`QUEUE`**: Queue name for job execution (defaults to "default")
