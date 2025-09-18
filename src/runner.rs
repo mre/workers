@@ -5,6 +5,7 @@ use crate::{BackgroundJob, storage};
 use anyhow::anyhow;
 use futures_util::future::join_all;
 use sqlx::PgPool;
+use std::boxed::Box;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,28 +44,27 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
         }
     }
 
-    /// Register a new job type for this job runner.
-    pub fn register_job_type<J: BackgroundJob<Context = Context>>(mut self) -> Self {
+    /// Register a new job type for this job runner and optionally configure its queue
+    #[allow(clippy::type_complexity)]
+    pub fn register<J: BackgroundJob<Context = Context>>(
+        mut self,
+        f: Option<Box<dyn FnOnce(&mut Queue<Context>) -> &Queue<Context>>>, // TODO: tell clippy to shut up or clean this
+    ) -> Self {
         let queue = self.queues.entry(J::QUEUE.into()).or_default();
+        if let Some(configure) = f {
+            configure(queue);
+        }
         queue.job_registry.register::<J>();
         self
     }
 
     /// Adjust the configuration of the [`DEFAULT_QUEUE`] queue.
-    pub fn configure_default_queue<F>(self, f: F) -> Self
+    pub fn configure_default_queue<F>(mut self, f: F) -> Self
     where
         F: FnOnce(&mut Queue<Context>) -> &Queue<Context>,
     {
-        self.configure_queue(DEFAULT_QUEUE, f)
-    }
-
-    /// Adjust the configuration of a queue. If the queue does not exist,
-    /// it will be created.
-    pub fn configure_queue<F>(mut self, name: &str, f: F) -> Self
-    where
-        F: FnOnce(&mut Queue<Context>) -> &Queue<Context>,
-    {
-        f(self.queues.entry(name.into()).or_default());
+        let default_queue = self.queues.entry(DEFAULT_QUEUE.into()).or_default();
+        f(default_queue);
         self
     }
 
