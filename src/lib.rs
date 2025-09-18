@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod background_job;
+mod cleaner;
 mod errors;
 mod job_registry;
 mod runner;

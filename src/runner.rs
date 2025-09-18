@@ -83,7 +83,6 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
             for i in 1..=queue.num_workers {
                 let name = format!("background-worker-{queue_name}-{i}");
                 info!(worker.name = %name, "Starting worker…");
-
                 let worker = Worker {
                     connection_pool: self.connection_pool.clone(),
                     context: self.context.clone(),
@@ -185,6 +184,13 @@ impl<Context> Queue<Context> {
         self.retention = retention;
         self
     }
+
+    pub fn get_cleanup_policy(&self) -> Option<CleanupPolicy> {
+        if let Retention::Limited(policy) = self.retention {
+            return Some(policy);
+        }
+        None
+    }
 }
 
 /// Configuration for queue retention
@@ -192,18 +198,21 @@ impl<Context> Queue<Context> {
 pub enum Retention {
     /// Do not archive any completed jobs
     None,
-    /// Move successfully completed jobs to the `archived_jobs` table instead of deleting them
+    /// Archive successfully completed jobs instead of deleting them
     Forever,
     /// Same as `Retention::Forever`, but periodically clean up the `archived_jobs` table
-    Limited {
-        /// Interval at which to run
-        cleanup_every: Duration,
-        /// How many records to keep
-        keep_at_most: usize,
-        /// Discard records that are older than the specified duration
-        /// By default,
-        remove_older_than: Option<Duration>,
-    },
+    Limited(CleanupPolicy),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CleanupPolicy {
+    /// Interval at which to run
+    cleanup_every: Duration,
+    /// How many records to keep
+    keep_at_most: usize,
+    /// Discard records that are older than the specified duration
+    /// By default,
+    remove_older_than: Option<Duration>,
 }
 
 impl Default for Retention {
