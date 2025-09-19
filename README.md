@@ -3,11 +3,7 @@
 [![docs.rs](https://docs.rs/workers/badge.svg)](https://docs.rs/workers)
 [![CI](https://github.com/mre/workers/actions/workflows/ci.yml/badge.svg)](https://github.com/mre/workers/actions/workflows/ci.yml)
 
-A robust async PostgreSQL-backed background job processing system.
-
-## Overview
-
-This crate provides an async PostgreSQL-backed job queue system with support for:
+A robust async PostgreSQL-backed background job processing system. It features:
 
 - **Prioritized job execution** with configurable priorities
 - **Job deduplication** to prevent duplicate work
@@ -15,40 +11,6 @@ This crate provides an async PostgreSQL-backed job queue system with support for
 - **Automatic retry** with exponential backoff for failed jobs
 - **Graceful shutdown** and queue management
 - **Error tracking** with Sentry integration
-
-## Architecture
-
-The system consists of three main components:
-
-- **`BackgroundJob`** trait - Define job types and their execution logic
-- **`Runner`** - High-level orchestrator that manages multiple queues and their worker pools
-- **`Worker`** - Low-level executor that polls for and processes individual jobs
-
-### Runner vs Worker
-
-- **`Runner`** is the entry point and orchestrator:
-  - Manages multiple named queues (e.g., "default", "emails", "indexing")
-  - Spawns and coordinates multiple `Worker` instances per queue
-  - Handles job type registration and queue configuration
-  - Provides graceful shutdown coordination across all workers
-
-- **`Worker`** is the actual job processor:
-  - Polls the database for available jobs in a specific queue
-  - Locks individual jobs to prevent concurrent execution
-  - Executes job logic with error handling and retry logic
-  - Reports job completion or failure back to the database
-
-Jobs are stored in the `background_jobs` `PostgreSQL` table and processed asynchronously by worker instances that poll for available work in their assigned queues.
-
-### Job Processing and Locking
-
-When a worker picks up a job from the database, the table row is immediately locked to prevent other workers from processing the same job concurrently. This ensures that:
-
-- Each job is processed exactly once, even with multiple workers running
-- Failed jobs can be safely retried without duplication
-- The system scales horizontally by adding more worker processes
-
-Once job execution completes successfully, the row is deleted from the table. If the job fails, the row remains with updated retry information for future processing attempts.
 
 ## Usage
 
@@ -136,6 +98,40 @@ of the same type in a single operation. This is more efficient than individual
 insert operations. Under the hood, this uses `PostgreSQL` arrays with UNNEST for
 bulk insert, handles deduplication with conditional inserts, and uses a single
 transaction for atomicity.
+
+## Architecture
+
+The system consists of three main components:
+
+- **`BackgroundJob`** trait - Define job types and their execution logic
+- **`Runner`** - High-level orchestrator that manages multiple queues and their worker pools
+- **`Worker`** - Low-level executor that polls for and processes individual jobs
+
+### Runner vs Worker
+
+- **`Runner`** is the entry point and orchestrator:
+  - Manages multiple named queues (e.g., "default", "emails", "indexing")
+  - Spawns and coordinates multiple `Worker` instances per queue
+  - Handles job type registration and queue configuration
+  - Provides graceful shutdown coordination across all workers
+
+- **`Worker`** is the actual job processor:
+  - Polls the database for available jobs in a specific queue
+  - Locks individual jobs to prevent concurrent execution
+  - Executes job logic with error handling and retry logic
+  - Reports job completion or failure back to the database
+
+Jobs are stored in the `background_jobs` `PostgreSQL` table and processed asynchronously by worker instances that poll for available work in their assigned queues.
+
+### Job Processing and Locking
+
+When a worker picks up a job from the database, the table row is immediately locked to prevent other workers from processing the same job concurrently. This ensures that:
+
+- Each job is processed exactly once, even with multiple workers running
+- Failed jobs can be safely retried without duplication
+- The system scales horizontally by adding more worker processes
+
+Once job execution completes successfully, the row is deleted from the table. If the job fails, the row remains with updated retry information for future processing attempts.
 
 ### Batch Enqueuing
 
