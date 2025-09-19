@@ -43,28 +43,52 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
         }
     }
 
-    /// Register a new job type for this job runner.
-    pub fn register_job_type<J: BackgroundJob<Context = Context>>(mut self) -> Self {
+    /// Register a new job type without any queue configuration.
+    pub fn register<J: BackgroundJob<Context = Context>>(mut self) -> Self {
         let queue = self.queues.entry(J::QUEUE.into()).or_default();
         queue.job_registry.register::<J>();
         self
     }
 
-    /// Adjust the configuration of the [`DEFAULT_QUEUE`] queue.
-    pub fn configure_default_queue<F>(self, f: F) -> Self
+    /// Register a new job type with a configuration closure.
+    ///
+    /// This provides cleaner ergonomics compared to the generic approach by accepting
+    /// a closure directly without requiring generic type parameters.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use workers::Runner;
+    /// use std::time::Duration;
+    ///
+    /// let runner = Runner::new(pool, context)
+    ///     .register::<SimpleJob>()  // No configuration
+    ///     .register_with_config::<EmailJob>(|queue| {  // With configuration
+    ///         queue.num_workers(4)
+    ///              .poll_interval(Duration::from_millis(500))
+    ///              .archive_completed_jobs(true)
+    ///     });
+    /// ```
+    pub fn register_with_config<J>(
+        mut self,
+        config: impl FnOnce(&mut Queue<Context>) -> &mut Queue<Context>,
+    ) -> Self
     where
-        F: FnOnce(&mut Queue<Context>) -> &Queue<Context>,
+        J: BackgroundJob<Context = Context>,
     {
-        self.configure_queue(DEFAULT_QUEUE, f)
+        let queue = self.queues.entry(J::QUEUE.into()).or_default();
+        config(queue);
+        queue.job_registry.register::<J>();
+        self
     }
 
-    /// Adjust the configuration of a queue. If the queue does not exist,
-    /// it will be created.
-    pub fn configure_queue<F>(mut self, name: &str, f: F) -> Self
+    /// Adjust the configuration of the [`DEFAULT_QUEUE`] queue.
+    pub fn configure_default_queue<F>(mut self, f: F) -> Self
     where
         F: FnOnce(&mut Queue<Context>) -> &Queue<Context>,
     {
-        f(self.queues.entry(name.into()).or_default());
+        let default_queue = self.queues.entry(DEFAULT_QUEUE.into()).or_default();
+        f(default_queue);
         self
     }
 

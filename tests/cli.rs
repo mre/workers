@@ -158,8 +158,8 @@ async fn jobs_are_locked_when_fetched() -> anyhow::Result<()> {
 
     let (pool, _container) = test_utils::setup_test_db().await?;
 
-    let runner = test_utils::create_test_runner(pool.clone(), test_context.clone())
-        .register_job_type::<TestJob>();
+    let runner =
+        test_utils::create_test_runner(pool.clone(), test_context.clone()).register::<TestJob>();
 
     let job_id = assert_some!(TestJob.enqueue(&pool).await?);
 
@@ -203,7 +203,7 @@ async fn jobs_are_deleted_when_successfully_run() -> anyhow::Result<()> {
 
     let (pool, _container) = test_utils::setup_test_db().await?;
 
-    let runner = test_utils::create_test_runner(pool.clone(), ()).register_job_type::<TestJob>();
+    let runner = test_utils::create_test_runner(pool.clone(), ()).register::<TestJob>();
 
     assert_eq!(remaining_jobs(&pool).await?, 0);
 
@@ -243,8 +243,8 @@ async fn failed_jobs_do_not_release_lock_before_updating_retry_time() -> anyhow:
 
     let (pool, _container) = test_utils::setup_test_db().await?;
 
-    let runner = test_utils::create_test_runner(pool.clone(), test_context.clone())
-        .register_job_type::<TestJob>();
+    let runner =
+        test_utils::create_test_runner(pool.clone(), test_context.clone()).register::<TestJob>();
 
     TestJob.enqueue(&pool).await?;
 
@@ -289,7 +289,7 @@ async fn panicking_in_jobs_updates_retry_counter() -> anyhow::Result<()> {
 
     let (pool, _container) = test_utils::setup_test_db().await?;
 
-    let runner = test_utils::create_test_runner(pool.clone(), ()).register_job_type::<TestJob>();
+    let runner = test_utils::create_test_runner(pool.clone(), ()).register::<TestJob>();
 
     let job_id = assert_some!(TestJob.enqueue(&pool).await?);
 
@@ -352,7 +352,7 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = Runner::new(pool.clone(), test_context.clone())
-        .register_job_type::<TestJob>()
+        .register::<TestJob>()
         .shutdown_when_queue_empty();
 
     // Enqueue first job
@@ -409,8 +409,7 @@ async fn jitter_configuration_affects_polling() -> anyhow::Result<()> {
 
     // Test that jitter configuration is accepted and compiles
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
-        .configure_queue("default", |queue| {
+        .register_with_config::<TestJob>(|queue| {
             queue
                 .num_workers(1)
                 .poll_interval(Duration::from_millis(100))
@@ -454,8 +453,8 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
-        .configure_queue("default", |queue| {
+        .register::<TestJob>()
+        .configure_default_queue(|queue| {
             queue.num_workers(1).archive_completed_jobs(true) // Enable archiving
         })
         .shutdown_when_queue_empty();
@@ -708,6 +707,81 @@ async fn test_batch_enqueue_with_different_priorities() -> anyhow::Result<()> {
             .fetch_all(&pool)
             .await?;
     assert!(low_priorities.iter().all(|&p| p == 1));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_cleaner_registration_api() -> anyhow::Result<()> {
+    use std::time::Duration;
+    #[derive(Serialize, Deserialize)]
+    struct SimpleRegistrationJob {
+        id: u32,
+    }
+
+    impl BackgroundJob for SimpleRegistrationJob {
+        const JOB_TYPE: &'static str = "simple_registration";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct ConfiguredRegistrationJob {
+        message: String,
+    }
+
+    impl BackgroundJob for ConfiguredRegistrationJob {
+        const JOB_TYPE: &'static str = "configured_registration";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Test the new cleaner registration API
+    let runner = Runner::new(pool.clone(), ())
+        .register::<SimpleRegistrationJob>() // No configuration needed
+        .register_with_config::<ConfiguredRegistrationJob>(|queue| {
+            // Clean configuration syntax
+            queue
+                .num_workers(3)
+                .poll_interval(Duration::from_millis(150))
+                .archive_completed_jobs(true)
+        })
+        .shutdown_when_queue_empty();
+
+    // Enqueue test jobs
+    let simple_job = SimpleRegistrationJob { id: 42 };
+    simple_job.enqueue(&pool).await?;
+
+    let configured_job = ConfiguredRegistrationJob {
+        message: "test message".to_string(),
+    };
+    configured_job.enqueue(&pool).await?;
+
+    // Start and wait for completion
+    let runner_handle = runner.start();
+    runner_handle.wait_for_shutdown().await;
+
+    // Verify jobs were processed
+    let remaining_jobs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM background_jobs")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(remaining_jobs, 0, "All jobs should have been processed");
+
+    // Verify configured job was archived
+    let archived_jobs: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM archived_jobs WHERE job_type = $1")
+            .bind("configured_registration")
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(archived_jobs, 1, "Configured job should have been archived");
 
     Ok(())
 }
