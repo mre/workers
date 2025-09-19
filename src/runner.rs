@@ -5,7 +5,6 @@ use crate::{BackgroundJob, storage};
 use anyhow::anyhow;
 use futures_util::future::join_all;
 use sqlx::PgPool;
-use std::boxed::Box;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,16 +43,21 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
         }
     }
 
-    /// Register a new job type for this job runner and optionally configure its queue
-    #[allow(clippy::type_complexity)]
-    pub fn register<J: BackgroundJob<Context = Context>>(
-        mut self,
-        f: Option<Box<dyn FnOnce(&mut Queue<Context>) -> &Queue<Context>>>, // TODO: tell clippy to shut up or clean this
-    ) -> Self {
+    /// Register a new job type for this job runner.
+    pub fn register<J: BackgroundJob<Context = Context>>(mut self) -> Self {
         let queue = self.queues.entry(J::QUEUE.into()).or_default();
-        if let Some(configure) = f {
-            configure(queue);
-        }
+        queue.job_registry.register::<J>();
+        self
+    }
+
+    /// Register a new job type and configure its queue.
+    pub fn register_with<J, F>(mut self, f: F) -> Self
+    where
+        J: BackgroundJob<Context = Context>,
+        F: FnOnce(&mut Queue<Context>) -> &mut Queue<Context>,
+    {
+        let queue = self.queues.entry(J::QUEUE.into()).or_default();
+        f(queue);
         queue.job_registry.register::<J>();
         self
     }

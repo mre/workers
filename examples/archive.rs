@@ -125,8 +125,8 @@ async fn main() -> Result<()> {
 
     // Create runner with archiving enabled for important jobs
     let runner = Runner::new(pool.clone(), ())
-        .register::<NotificationJob>(None)
-        .register::<PaymentJob>(None)
+        .register::<NotificationJob>()
+        .register::<PaymentJob>()
         .configure_default_queue(|queue| {
             queue
                 .num_workers(2)
