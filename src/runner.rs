@@ -43,14 +43,17 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
         }
     }
 
-    /// Register a new job type for this job runner.
+    /// Register a new job type without any queue configuration.
     pub fn register<J: BackgroundJob<Context = Context>>(mut self) -> Self {
         let queue = self.queues.entry(J::QUEUE.into()).or_default();
         queue.job_registry.register::<J>();
         self
     }
 
-    /// Register a new job type and configure its queue.
+    /// Register a new job type with a configuration closure.
+    ///
+    /// This provides cleaner ergonomics compared to the generic approach by accepting
+    /// a closure directly without requiring generic type parameters.
     ///
     /// # Example
     ///
@@ -59,21 +62,22 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
     /// use std::time::Duration;
     ///
     /// let runner = Runner::new(pool, context)
-    ///     .register_with::<EmailJob, _>(|queue| {
+    ///     .register::<SimpleJob>()  // No configuration
+    ///     .register_with_config::<EmailJob>(|queue| {  // With configuration
     ///         queue.num_workers(4)
     ///              .poll_interval(Duration::from_millis(500))
     ///              .archive_completed_jobs(true)
     ///     });
     /// ```
-    ///
-    /// **Note:** Use `_` as the second generic parameter to let Rust infer the closure type.
-    pub fn register_with<J, F>(mut self, f: F) -> Self
+    pub fn register_with_config<J>(
+        mut self,
+        config: impl FnOnce(&mut Queue<Context>) -> &mut Queue<Context>,
+    ) -> Self
     where
         J: BackgroundJob<Context = Context>,
-        F: FnOnce(&mut Queue<Context>) -> &mut Queue<Context>,
     {
         let queue = self.queues.entry(J::QUEUE.into()).or_default();
-        f(queue);
+        config(queue);
         queue.job_registry.register::<J>();
         self
     }

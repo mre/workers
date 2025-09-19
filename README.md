@@ -89,7 +89,7 @@ use std::time::Duration;
 
 let runner = Runner::new(connection_pool, app_context)
     .register::<ReadRedditJob>()                          // Simple registration
-    .register_with::<BossIsWatchingJob, _>(|queue| {      // With queue config. Note the omitted generic parameter
+    .register_with_config::<BossIsWatchingJob>(|queue| {  // With queue config 
         queue.num_workers(4)
              .poll_interval(Duration::from_millis(100))
              .archive_completed_jobs(true)
@@ -103,8 +103,6 @@ let handle = runner.start();
 handle.wait_for_shutdown().await;
 ```
 
-> [!TIP]
->  When using `register_with`, always use `_` as the second generic parameter to let Rust infer the closure type!
 
 ### Enqueuing Jobs
 
