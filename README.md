@@ -88,16 +88,23 @@ use workers::Runner;
 use std::time::Duration;
 
 let runner = Runner::new(connection_pool, app_context)
-    .register_job_type::<SendEmailJob>()
-    .configure_queue("emails", |queue| {
+    .register::<ReadRedditJob>()                          // Simple registration
+    .register_with::<BossIsWatchingJob, _>(|queue| {      // With queue config. Note the omitted generic parameter
+        queue.num_workers(4)
+             .poll_interval(Duration::from_millis(100))
+             .archive_completed_jobs(true)
+    })
+    .configure_default_queue(|queue| {
         queue.num_workers(2)
-             .poll_interval(Duration::from_secs(5))
              .jitter(Duration::from_millis(500))
     });
 
 let handle = runner.start();
 handle.wait_for_shutdown().await;
 ```
+
+> [!TIP]
+>  When using `register_with`, always use `_` as the second generic parameter to let Rust infer the closure type!
 
 ### Enqueuing Jobs
 

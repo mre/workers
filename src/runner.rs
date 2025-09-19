@@ -51,6 +51,22 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
     }
 
     /// Register a new job type and configure its queue.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use workers::Runner;
+    /// use std::time::Duration;
+    ///
+    /// let runner = Runner::new(pool, context)
+    ///     .register_with::<EmailJob, _>(|queue| {
+    ///         queue.num_workers(4)
+    ///              .poll_interval(Duration::from_millis(500))
+    ///              .archive_completed_jobs(true)
+    ///     });
+    /// ```
+    ///
+    /// **Note:** Use `_` as the second generic parameter to let Rust infer the closure type.
     pub fn register_with<J, F>(mut self, f: F) -> Self
     where
         J: BackgroundJob<Context = Context>,
