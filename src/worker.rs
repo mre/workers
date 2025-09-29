@@ -90,7 +90,7 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
             }
         };
 
-        let span = info_span!("job", job.id = %job.id, job.typ = %job.job_type);
+        let span = info_span!("job", job.id = %job.id, job.type = %job.job_type);
 
         let job_id = job.id;
         debug!("Running job…");
