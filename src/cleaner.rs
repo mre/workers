@@ -1,5 +1,5 @@
 use std::{collections::HashMap, marker::PhantomData, time::Duration};
-use tracing::{Instrument, debug, error, info};
+use tracing::{debug, error, info, instrument};
 
 use sqlx::PgPool;
 use tokio::task::JoinSet;
@@ -77,45 +77,41 @@ impl ArchiveCleaner {
         }
     }
 
+    #[instrument(skip(config, pool))]
     async fn spawn_cleaner(job_type: JobType, config: CleanupConfiguration, pool: PgPool) {
-        let span = tracing::info_span!("archive_cleaner", job_type = %job_type);
-        async move {
-            info!(
-                cleanup_every = ?config.cleanup_every,
+        info!(
+            cleanup_every = ?config.cleanup_every,
+            policy = ?config.policy,
+            "Archive cleaner task started"
+        );
+
+        let mut ticker = tokio::time::interval(config.cleanup_every);
+
+        loop {
+            ticker.tick().await;
+
+            debug!(
                 policy = ?config.policy,
-                "Archive cleaner task started"
+                "Starting cleanup cycle"
             );
 
-            let mut ticker = tokio::time::interval(config.cleanup_every);
-
-            loop {
-                ticker.tick().await;
-
-                debug!(
-                    policy = ?config.policy,
-                    "Starting cleanup cycle"
-                );
-
-                let result = match config.policy {
-                    CleanupPolicy::MaxAge(max_age) => {
-                        debug!(
-                            max_age = ?max_age,
-                            "Executing MaxAge cleanup policy"
-                        );
-                        sqlx::query(
+            let result = match config.policy {
+                CleanupPolicy::MaxAge(max_age) => {
+                    debug!(
+                        max_age = ?max_age,
+                        "Executing MaxAge cleanup policy"
+                    );
+                    sqlx::query(
                             "DELETE FROM archived_jobs WHERE job_type = $1 AND archived_at < (NOW() - $2)",
                         )
                         .bind(&job_type)
                         .bind(max_age)
                         .execute(&pool)
                         .await
-                    }
-                    CleanupPolicy::MaxCount(count) => {
-                        debug!(
-                            max_count = count,
-                            "Executing MaxCount cleanup policy"
-                        );
-                        sqlx::query(&format!(
+                }
+                CleanupPolicy::MaxCount(count) => {
+                    debug!(max_count = count, "Executing MaxCount cleanup policy");
+                    sqlx::query(&format!(
                             r"DELETE FROM archived_jobs WHERE job_type = $1
                              AND archived_at < (SELECT archived_at FROM archived_jobs WHERE job_type = $1
                                                 ORDER BY archived_at DESC OFFSET {offset} LIMIT 1)",
@@ -124,55 +120,52 @@ impl ArchiveCleaner {
                         .bind(&job_type)
                         .execute(&pool)
                         .await
-                    }
-                    CleanupPolicy::Mixed { max_age, max_count } => {
-                        debug!(
-                            max_age = ?max_age,
-                            max_count = max_count,
-                            "Executing Mixed cleanup policy"
-                        );
-                        sqlx::query(&format!(
-                            r"DELETE FROM archived_jobs WHERE job_type = $1 AND
+                }
+                CleanupPolicy::Mixed { max_age, max_count } => {
+                    debug!(
+                        max_age = ?max_age,
+                        max_count = max_count,
+                        "Executing Mixed cleanup policy"
+                    );
+                    sqlx::query(&format!(
+                        r"DELETE FROM archived_jobs WHERE job_type = $1 AND
                           (archived_at < (NOW() - $2) OR
                            archived_at < (SELECT archived_at FROM archived_jobs WHERE job_type = $1
                                           ORDER BY archived_at DESC OFFSET {offset} LIMIT 1))",
-                            offset = max_count - 1
-                        ))
-                        .bind(&job_type)
-                        .bind(max_age)
-                        .execute(&pool)
-                        .await
-                    }
-                };
+                        offset = max_count - 1
+                    ))
+                    .bind(&job_type)
+                    .bind(max_age)
+                    .execute(&pool)
+                    .await
+                }
+            };
 
-                match result {
-                    Ok(query_result) => {
-                        let rows_affected = query_result.rows_affected();
-                        if rows_affected > 0 {
-                            info!(
-                                rows_deleted = rows_affected,
-                                policy = ?config.policy,
-                                "Cleanup cycle completed successfully"
-                            );
-                        } else {
-                            debug!("Cleanup cycle completed - no rows to delete");
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            error = %e,
+            match result {
+                Ok(query_result) => {
+                    let rows_affected = query_result.rows_affected();
+                    if rows_affected > 0 {
+                        info!(
+                            rows_deleted = rows_affected,
                             policy = ?config.policy,
-                            "Failed to clean archived jobs"
+                            "Cleanup cycle completed successfully"
                         );
-                        break;
+                    } else {
+                        debug!("Cleanup cycle completed - no rows to delete");
                     }
                 }
+                Err(e) => {
+                    error!(
+                        error = %e,
+                        policy = ?config.policy,
+                        "Failed to clean archived jobs"
+                    );
+                    break;
+                }
             }
-
-            info!("Archive cleaner task exited");
         }
-        .instrument(span)
-        .await;
+
+        info!("Archive cleaner task exited");
     }
 }
 
