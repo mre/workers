@@ -208,12 +208,38 @@ let count = archived_job_count(&pool).await?;
 # }
 ```
 
+## Archive cleanup
+
+In case you have chosen to archive successfully completed jobs, you might run into the issue that your database keeps growing in size endlessly.
+
+For this eventuality, you can configure an `ArchiveCleaner` to take care of cleanups for you.
+
+Each configured job type will start a background task with its own timer that periodically runs cleanup operations based on the provided configuration.
+
+```rust,no_run
+use workers::{ArchiveCleaner, CleanupConfiguration, CleanupPolicy};
+use std::time::Duration;
+
+let cleaner = ArchiveCleaner::new()
+    .configure::<MyJob>(CleanupConfiguration {
+        cleanup_every: Duration::from_secs(60), // Run cleanup every 60 seconds
+        policy: CleanupPolicy::MaxCount(1000),  // Keep only the latest 1000 archived jobs
+    })
+    .run(&pool);
+
+// Do whatever else...
+
+// The cleaner is a tokio::task::JoinSet, which means: once it goes out of scope, it aborts all tasks.
+// Or you may want to stop it manually:
+cleaner.abort_all();
+```
+
 ## Database Setup
 
 > [!NOTE]\
 >  These migrations only CREATE new tables - your existing data is completely safe.
 
-This library requires some `PostgreSQL` tables to work. There are a few ways to setup up the DB. 
+This library requires some `PostgreSQL` tables to work. There are a few ways to setup up the DB.
 
 ### One-line Setup
 
@@ -225,11 +251,11 @@ use sqlx::PgPool;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = PgPool::connect("postgresql://user:pass@localhost/db").await?;
-    
+
     // One-line database setup - safe to call multiple times
     // Under the hood, this runs `sqlx::migrate`
     workers::setup_database(&pool).await?;
-    
+
     // Now you can use the workers library...
     Ok(())
 }
@@ -271,13 +297,13 @@ The workers poll the database for new jobs at regular intervals (configurable vi
 - You still need polling anyway. LISTEN/NOTIFY isn't reliable enough on its own - notifications can be lost during connection drops or server restarts. You end up implementing both systems, which adds complexity.
 - Connection poolers interfere. Production deployments often use `PgBouncer` or similar tools. LISTEN requires persistent connections, which conflicts with connection pool strategies.
 
-The polling approach prevents thundering herds through added jitter, works with any `PostgreSQL` setup, is simple and reliable (no missed notifications) and easy to tune for your workload (e.g. few or many jobs). Feel free to open an issue if we're missing anything. 
+The polling approach prevents thundering herds through added jitter, works with any `PostgreSQL` setup, is simple and reliable (no missed notifications) and easy to tune for your workload (e.g. few or many jobs). Feel free to open an issue if we're missing anything.
 
 ## Development Setup
 
 This project uses [TestContainers](https://rust.testcontainers.org/) for integration testing, which automatically spins up `PostgreSQL` containers during test execution.
 
-### Example Usage 
+### Example Usage
 
 You can run a stress test like so:
 
@@ -324,7 +350,7 @@ make ci
 
 The tests will automatically:
 1. Start a `PostgreSQL` container using `TestContainers`
-2. Run database migrations 
+2. Run database migrations
 3. Execute the test suite
 4. Clean up containers when finished
 
