@@ -22,8 +22,14 @@ pub struct ArchiveCleaner<State = Unconfigured> {
     _state: PhantomData<State>,
 }
 
+impl Default for ArchiveCleaner<Unconfigured> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// How to clean up archived entries
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CleanupPolicy {
     /// Keep all entries newer than `now - Duration`
     MaxAge(chrono::Duration),
@@ -45,7 +51,7 @@ impl Default for CleanupPolicy {
 }
 
 /// Configuration for cleaning up archived entries
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CleanupConfiguration {
     /// Interval at which to run
     pub cleanup_every: Duration,
@@ -57,14 +63,14 @@ impl Default for CleanupConfiguration {
     fn default() -> Self {
         Self {
             cleanup_every: Duration::from_secs(3600),
-            policy: Default::default(),
+            policy: CleanupPolicy::default(),
         }
     }
 }
 
 impl ArchiveCleaner {
     /// Create a new, unconfigured, `ArchiveCleaner`
-    pub fn new() -> ArchiveCleaner<Unconfigured> {
+    pub fn new() -> Self {
         Self {
             configurations: HashMap::new(),
             _state: PhantomData,
@@ -166,7 +172,7 @@ impl ArchiveCleaner {
             info!("Archive cleaner task exited");
         }
         .instrument(span)
-        .await
+        .await;
     }
 }
 

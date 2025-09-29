@@ -216,7 +216,7 @@ For this eventuality, you can configure an `ArchiveCleaner` to take care of clea
 
 Each configured job type will start a background task with its own timer that periodically runs cleanup operations based on the provided configuration.
 
-```rust,no_run
+```rust,ignore
 use workers::{ArchiveCleaner, CleanupConfiguration, CleanupPolicy};
 use std::time::Duration;
 

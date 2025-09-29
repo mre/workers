@@ -1,7 +1,7 @@
-//! Example of using the ArchiveCleaner
+//! Example of using the `ArchiveCleaner`
 //!
 //! This example demonstrates how to set up and use the
-//! `ArchiveCleaner` to periodically clean up archived jobs from a PostgreSQL database.
+//! `ArchiveCleaner` to periodically clean up archived jobs from a `PostgreSQL` database.
 //!
 //! The cleaner can be configured with different policies to manage the retention of archived jobs.
 //!

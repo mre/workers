@@ -3,6 +3,7 @@
 #![allow(clippy::panic)]
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::indexing_slicing)]
+#![allow(clippy::cast_possible_wrap)]
 
 use claims::{assert_none, assert_some};
 use insta::assert_compact_json_snapshot;
