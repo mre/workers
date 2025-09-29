@@ -4,6 +4,7 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::indexing_slicing)]
 
+use chrono::TimeDelta;
 use claims::{assert_none, assert_some};
 use insta::assert_compact_json_snapshot;
 use serde::{Deserialize, Serialize};
@@ -708,6 +709,58 @@ async fn test_batch_enqueue_with_different_priorities() -> anyhow::Result<()> {
             .fetch_all(&pool)
             .await?;
     assert!(low_priorities.iter().all(|&p| p == 1));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
+    use std::time::Duration;
+    use workers::{ArchiveCleaner, CleanupConfiguration, CleanupPolicy};
+
+    #[derive(Serialize, Deserialize)]
+    struct TestJob;
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "test_archive_cleaner";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Configure runner with archiving enabled
+    let runner = Runner::new(pool.clone(), ())
+        .register_job_type::<TestJob>()
+        .configure_queue("default", |queue| {
+            queue.num_workers(1).archive_completed_jobs(true)
+        })
+        .shutdown_when_queue_empty();
+
+    // Enqueue and process a test job to create an archived job
+    let job = TestJob;
+    job.enqueue(&pool).await?;
+    let runner_handle = runner.start();
+    runner_handle.wait_for_shutdown().await;
+
+    // Verify we have 1 archived job
+    assert_eq!(archived_job_count(&pool).await?, 1);
+
+    let mut cleaner = ArchiveCleaner::new()
+        .configure::<TestJob>(CleanupConfiguration {
+            policy: CleanupPolicy::MaxAge(TimeDelta::seconds(0)), // Remove all archived jobs
+            cleanup_every: Duration::from_secs(1),
+        })
+        .run(&pool.clone());
+    // Wait a bit to allow the cleaner to run
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    cleaner.abort_all(); // Stop the cleaner tasks
+    // Verify archived jobs have been cleaned up
+    assert_eq!(archived_job_count(&pool.clone()).await.unwrap(), 0);
 
     Ok(())
 }
