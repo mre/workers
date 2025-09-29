@@ -13,7 +13,7 @@ categories = ["asynchronous", "database"]
 anyhow = "1.0"
 sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "chrono", "json", "uuid", "derive", "migrate", "macros"] }
 futures-util = "0.3"
-sentry-core = { version = "0.42", features = ["client"] }
+sentry-core = { version = "0.43", features = ["client"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
