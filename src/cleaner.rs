@@ -89,7 +89,7 @@ impl ArchiveCleaner {
                     sqlx::query(&format!(
                         r"DELETE FROM archived_jobs WHERE job_type = $1
                          AND archived_at < (SELECT archived_at FROM archived_jobs WHERE job_type = $1
-                                            ORDER BY archived_at DESC OFFSET {count} LIMIT 1)"
+                                            ORDER BY archived_at DESC OFFSET {offset} LIMIT 1)", offset = count - 1
                     ))
                     .bind(&job_type)
                     .execute(&pool)
@@ -100,7 +100,7 @@ impl ArchiveCleaner {
                         r"DELETE FROM archived_jobs WHERE job_type = $1 AND
                       (archived_at < (NOW() - $2) OR
                        archived_at < (SELECT archived_at FROM archived_jobs WHERE job_type = $1
-                                      ORDER BY archived_at DESC OFFSET {max_count} LIMIT 1))"
+                                      ORDER BY archived_at DESC OFFSET {offset} LIMIT 1))", offset = max_count - 1
                     ))
                     .bind(&job_type)
                     .bind(max_age)
