@@ -178,7 +178,7 @@ impl ArchiveCleaner {
 
 impl<State> ArchiveCleaner<State> {
     /// Configure the cleaner for a specific job type
-    pub fn configure<J: BackgroundJob<Context: Clone + Send + Sync + 'static>>(
+    pub fn configure<J: BackgroundJob>(
         mut self,
         configuration: CleanupConfiguration,
     ) -> ArchiveCleaner<Configured> {
