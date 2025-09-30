@@ -178,7 +178,7 @@ impl ArchiveCleaner {
                             r"DELETE FROM archived_jobs WHERE job_type = $1
                              AND archived_at < (SELECT archived_at FROM archived_jobs WHERE job_type = $1
                                                 ORDER BY archived_at DESC OFFSET {offset} LIMIT 1)",
-                            offset = count - 1
+                            offset = count.saturating_sub(1)
                         ))
                         .bind(&job_type)
                         .execute(&pool)
@@ -200,7 +200,7 @@ impl ArchiveCleaner {
                               SELECT archived_at FROM archived_jobs WHERE job_type = $1
                               ORDER BY archived_at DESC OFFSET {offset} LIMIT 1
                           )",
-                        offset = keep_at_least - 1
+                        offset = keep_at_least.saturating_sub(1)
                     ))
                     .bind(&job_type)
                     .bind(max_age)
