@@ -228,11 +228,8 @@ impl ArchiveCleaner {
                         policy = ?config.policy,
                         "Failed to clean archived jobs"
                     );
-                    break;
                 }
             }
         }
-
-        info!("Archive cleaner task exited");
     }
 }
