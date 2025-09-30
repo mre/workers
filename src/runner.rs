@@ -83,6 +83,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
             for i in 1..=queue.num_workers {
                 let name = format!("background-worker-{queue_name}-{i}");
                 info!(worker.name = %name, "Starting worker…");
+
                 let worker = Worker {
                     connection_pool: self.connection_pool.clone(),
                     context: self.context.clone(),
