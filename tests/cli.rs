@@ -3,6 +3,7 @@
 #![allow(clippy::panic)]
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::indexing_slicing)]
+#![allow(clippy::cast_possible_wrap)]
 
 use claims::{assert_none, assert_some};
 use insta::assert_compact_json_snapshot;
@@ -708,6 +709,179 @@ async fn test_batch_enqueue_with_different_priorities() -> anyhow::Result<()> {
             .fetch_all(&pool)
             .await?;
     assert!(low_priorities.iter().all(|&p| p == 1));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
+    use chrono::TimeDelta;
+    use std::time::Duration;
+    use workers::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
+
+    #[derive(Serialize, Deserialize)]
+    struct TestJob;
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "test_archive_cleaner";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Configure runner with archiving enabled
+    let runner = Runner::new(pool.clone(), ())
+        .register_job_type::<TestJob>()
+        .configure_queue("default", |queue| {
+            queue.num_workers(1).archive_completed_jobs(true)
+        })
+        .shutdown_when_queue_empty();
+
+    // Enqueue and process a test job to create an archived job
+    let job = TestJob;
+    job.enqueue(&pool).await?;
+    let runner_handle = runner.start();
+    runner_handle.wait_for_shutdown().await;
+
+    // Verify we have 1 archived job
+    assert_eq!(archived_job_count(&pool).await?, 1);
+
+    ArchiveCleanerBuilder::new()
+        .configure::<TestJob>(CleanupConfiguration {
+            policy: CleanupPolicy::MaxAge(TimeDelta::seconds(0)), // Remove all archived jobs
+            cleanup_every: Duration::from_secs(1),
+        })
+        .run(&pool.clone());
+    // Wait a bit to allow the cleaner to run
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Verify archived jobs have been cleaned up
+    assert_eq!(archived_job_count(&pool.clone()).await.unwrap(), 0);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
+    use std::time::Duration;
+    use workers::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
+
+    const TOTAL_JOBS: i64 = 5;
+    const KEEP_JOBS: usize = 2;
+
+    #[derive(Serialize, Deserialize)]
+    struct TestJob;
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "test_archive_cleaner_count";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Configure runner with archiving enabled
+    let runner = Runner::new(pool.clone(), ())
+        .register_job_type::<TestJob>()
+        .configure_queue("default", |queue| {
+            queue.num_workers(1).archive_completed_jobs(true)
+        })
+        .shutdown_when_queue_empty();
+
+    // Enqueue and process multiple test jobs to create archived jobs
+    for _ in 0..TOTAL_JOBS {
+        let job = TestJob;
+        job.enqueue(&pool).await?;
+        let runner_handle = runner.start();
+        runner_handle.wait_for_shutdown().await;
+    }
+
+    assert_eq!(archived_job_count(&pool).await?, TOTAL_JOBS);
+
+    ArchiveCleanerBuilder::new()
+        .configure::<TestJob>(CleanupConfiguration {
+            policy: CleanupPolicy::MaxCount(KEEP_JOBS), // Keep only last 2 archived jobs
+            cleanup_every: Duration::from_secs(1),
+        })
+        .run(&pool.clone());
+    // Wait a bit to allow the cleaner to run
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Verify only 2 archived jobs remain
+    assert_eq!(
+        archived_job_count(&pool.clone()).await.unwrap(),
+        KEEP_JOBS as i64
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> {
+    use chrono::TimeDelta;
+    use std::time::Duration;
+    use workers::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
+
+    const TOTAL_JOBS: i64 = 5;
+    const KEEP_JOBS: usize = 2;
+
+    #[derive(Serialize, Deserialize)]
+    struct TestJob;
+
+    impl BackgroundJob for TestJob {
+        const JOB_NAME: &'static str = "test_archive_cleaner_count_age";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Configure runner with archiving enabled
+    let runner = Runner::new(pool.clone(), ())
+        .register_job_type::<TestJob>()
+        .configure_queue("default", |queue| {
+            queue.num_workers(1).archive_completed_jobs(true)
+        })
+        .shutdown_when_queue_empty();
+
+    // Enqueue and process multiple test jobs to create archived jobs
+    for _ in 0..TOTAL_JOBS {
+        let job = TestJob;
+        job.enqueue(&pool).await?;
+        let runner_handle = runner.start();
+        runner_handle.wait_for_shutdown().await;
+    }
+
+    assert_eq!(archived_job_count(&pool).await?, TOTAL_JOBS);
+
+    ArchiveCleanerBuilder::new()
+        .configure::<TestJob>(CleanupConfiguration {
+            policy: CleanupPolicy::Retain {
+                max_age: TimeDelta::seconds(0), // Jobs insta-expire
+                keep_at_least: KEEP_JOBS,
+            },
+            cleanup_every: Duration::from_secs(1),
+        })
+        .run(&pool.clone());
+
+    // Wait a bit to allow the cleaner to run
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Verify we cleaned up but kept some
+    assert_eq!(
+        archived_job_count(&pool.clone()).await.unwrap(),
+        KEEP_JOBS as i64
+    );
 
     Ok(())
 }

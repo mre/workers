@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod background_job;
+mod cleaner;
 mod errors;
 mod job_registry;
 mod runner;
@@ -14,6 +15,8 @@ mod worker;
 pub use self::background_job::BackgroundJob;
 /// The default queue name used when no specific queue is specified.
 pub use self::background_job::DEFAULT_QUEUE;
+/// The archive cleaner for purging archived jobs.
+pub use self::cleaner::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
 /// Error type for job enqueueing operations.
 pub use self::errors::EnqueueError;
 /// The main runner that orchestrates job processing.
@@ -38,7 +41,7 @@ pub use self::storage::{ArchiveQuery, archived_job_count, get_archived_jobs};
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let pool = PgPool::connect("postgresql://user:pass@localhost/db").await?;
 ///     setup_database(&pool).await?;
-///     
+///
 ///     // Now you can use the workers library...
 ///     Ok(())
 /// }
