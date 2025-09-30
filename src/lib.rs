@@ -16,7 +16,7 @@ pub use self::background_job::BackgroundJob;
 /// The default queue name used when no specific queue is specified.
 pub use self::background_job::DEFAULT_QUEUE;
 /// The archive cleaner for purging archived jobs.
-pub use self::cleaner::{ArchiveCleaner, CleanupConfiguration, CleanupPolicy};
+pub use self::cleaner::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
 /// Error type for job enqueueing operations.
 pub use self::errors::EnqueueError;
 /// The main runner that orchestrates job processing.

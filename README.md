@@ -210,17 +210,17 @@ let count = archived_job_count(&pool).await?;
 
 ## Archive cleanup
 
-In case you have chosen to archive successfully completed jobs, you might run into the issue that your database keeps growing in size endlessly.
+In case you have chosen to archive successfully completed jobs, you might run into the issue that your database keeps growing in size indefinitely.
 
 For this eventuality, you can configure an `ArchiveCleaner` to take care of cleanups for you.
 
 Each configured job type will start a background task with its own timer that periodically runs cleanup operations based on the provided configuration.
 
 ```rust,ignore
-use workers::{ArchiveCleaner, CleanupConfiguration, CleanupPolicy};
+use workers::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
 use std::time::Duration;
 
-let cleaner = ArchiveCleaner::new()
+let cleaner = ArchiveCleanerBuilder::new()
     .configure::<MyJob>(CleanupConfiguration {
         cleanup_every: Duration::from_secs(60), // Run cleanup every 60 seconds
         policy: CleanupPolicy::MaxCount(1000),  // Keep only the latest 1000 archived jobs
@@ -229,9 +229,9 @@ let cleaner = ArchiveCleaner::new()
 
 // Do whatever else...
 
-// The cleaner is a tokio::task::JoinSet, which means: once it goes out of scope, it aborts all tasks.
-// Or you may want to stop it manually:
-cleaner.abort_all();
+// You can manually stop the cleaner when needed:
+cleaner.stop();
+// or just let it fall out of scope and be aborted automatically.
 ```
 
 ## Database Setup

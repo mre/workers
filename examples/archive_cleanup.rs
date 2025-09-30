@@ -10,6 +10,7 @@
 //! ```bash
 //! cargo run --example archive_cleanup
 //! ```
+#![allow(clippy::cast_possible_wrap)]
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,10 @@ use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 use tracing::info;
-use workers::{BackgroundJob, CleanupConfiguration, Runner};
+use workers::{
+    ArchiveCleanerBuilder, BackgroundJob, CleanupConfiguration, CleanupPolicy, Runner,
+    archived_job_count,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ReticulateSplineJob;
@@ -59,6 +63,8 @@ async fn setup_database() -> Result<(PgPool, ContainerAsync<Postgres>)> {
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> Result<()> {
+    const KEEP_JOBS: usize = 5;
+
     // Initialize tracing with compact formatting
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -73,10 +79,11 @@ async fn main() -> Result<()> {
         .register_job_type::<ReticulateSplineJob>()
         .configure_default_queue(|queue| queue.archive_completed_jobs(true))
         .shutdown_when_queue_empty();
-    let mut cleaner = workers::ArchiveCleaner::new()
+
+    ArchiveCleanerBuilder::new()
         .configure::<ReticulateSplineJob>(CleanupConfiguration {
-            cleanup_every: Duration::from_secs(2),
-            policy: workers::CleanupPolicy::MaxCount(5),
+            cleanup_every: Duration::from_secs(1),
+            policy: CleanupPolicy::MaxCount(KEEP_JOBS),
         })
         .run(&pool.clone());
 
@@ -93,8 +100,8 @@ async fn main() -> Result<()> {
     info!("All jobs processed, waiting for cleanup!");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(archived_job_count(&pool.clone()).await?, KEEP_JOBS as i64);
 
-    cleaner.abort_all();
     info!("The cleaner has only kept the last 5 archived jobs as per the MaxCount policy.");
     Ok(())
 }

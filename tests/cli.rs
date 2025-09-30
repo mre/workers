@@ -717,7 +717,7 @@ async fn test_batch_enqueue_with_different_priorities() -> anyhow::Result<()> {
 async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
     use chrono::TimeDelta;
     use std::time::Duration;
-    use workers::{ArchiveCleaner, CleanupConfiguration, CleanupPolicy};
+    use workers::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
 
     #[derive(Serialize, Deserialize)]
     struct TestJob;
@@ -750,7 +750,7 @@ async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
     // Verify we have 1 archived job
     assert_eq!(archived_job_count(&pool).await?, 1);
 
-    let mut cleaner = ArchiveCleaner::new()
+    ArchiveCleanerBuilder::new()
         .configure::<TestJob>(CleanupConfiguration {
             policy: CleanupPolicy::MaxAge(TimeDelta::seconds(0)), // Remove all archived jobs
             cleanup_every: Duration::from_secs(1),
@@ -759,7 +759,6 @@ async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
     // Wait a bit to allow the cleaner to run
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    cleaner.abort_all(); // Stop the cleaner tasks
     // Verify archived jobs have been cleaned up
     assert_eq!(archived_job_count(&pool.clone()).await.unwrap(), 0);
 
@@ -769,7 +768,7 @@ async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
 #[tokio::test]
 async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
     use std::time::Duration;
-    use workers::{ArchiveCleaner, CleanupConfiguration, CleanupPolicy};
+    use workers::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
 
     const TOTAL_JOBS: i64 = 5;
     const KEEP_JOBS: usize = 2;
@@ -806,7 +805,7 @@ async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
 
     assert_eq!(archived_job_count(&pool).await?, TOTAL_JOBS);
 
-    let mut cleaner = ArchiveCleaner::new()
+    ArchiveCleanerBuilder::new()
         .configure::<TestJob>(CleanupConfiguration {
             policy: CleanupPolicy::MaxCount(KEEP_JOBS), // Keep only last 2 archived jobs
             cleanup_every: Duration::from_secs(1),
@@ -815,7 +814,6 @@ async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
     // Wait a bit to allow the cleaner to run
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    cleaner.abort_all(); // Stop the cleaner tasks
     // Verify only 2 archived jobs remain
     assert_eq!(
         archived_job_count(&pool.clone()).await.unwrap(),
@@ -829,7 +827,7 @@ async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
 async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> {
     use chrono::TimeDelta;
     use std::time::Duration;
-    use workers::{ArchiveCleaner, CleanupConfiguration, CleanupPolicy};
+    use workers::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
 
     const TOTAL_JOBS: i64 = 5;
     const KEEP_JOBS: usize = 2;
@@ -866,28 +864,24 @@ async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> 
 
     assert_eq!(archived_job_count(&pool).await?, TOTAL_JOBS);
 
-    let mut cleaner = ArchiveCleaner::new()
+    ArchiveCleanerBuilder::new()
         .configure::<TestJob>(CleanupConfiguration {
-            policy: CleanupPolicy::Mixed {
-                max_age: TimeDelta::seconds(3),
-                max_count: KEEP_JOBS,
+            policy: CleanupPolicy::Retain {
+                max_age: TimeDelta::seconds(0), // Jobs insta-expire
+                keep_at_least: KEEP_JOBS,
             },
             cleanup_every: Duration::from_secs(1),
         })
         .run(&pool.clone());
+
     // Wait a bit to allow the cleaner to run
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    // Verify we cleaned up based on count
+    // Verify we cleaned up but kept some
     assert_eq!(
         archived_job_count(&pool.clone()).await.unwrap(),
         KEEP_JOBS as i64
     );
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    // Verify we cleaned up based on age as well
-    assert_eq!(archived_job_count(&pool.clone()).await.unwrap(), 0);
-
-    cleaner.abort_all(); // Stop the cleaner tasks
     Ok(())
 }

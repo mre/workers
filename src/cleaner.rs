@@ -2,7 +2,7 @@ use std::{collections::HashMap, marker::PhantomData, time::Duration};
 use tracing::{debug, error, info, instrument};
 
 use sqlx::PgPool;
-use tokio::task::JoinSet;
+use tokio::task::AbortHandle;
 
 use crate::BackgroundJob;
 
@@ -14,15 +14,15 @@ pub struct Unconfigured;
 
 type JobType = String;
 
-/// The `ArchiveCleaner` spawns a thread that is in charge of cleaning up various archived jobs of given types
+/// The `ArchiveCleanerBuilder` prepares an `ArchiveCleaner` that is in charge of cleaning up various archived jobs of given types
 /// Uses typestate to ensure you cannot start a cleaner that will do nothing
 #[derive(Debug)]
-pub struct ArchiveCleaner<State = Unconfigured> {
+pub struct ArchiveCleanerBuilder<State = Unconfigured> {
     configurations: HashMap<JobType, CleanupConfiguration>,
     _state: PhantomData<State>,
 }
 
-impl Default for ArchiveCleaner<Unconfigured> {
+impl Default for ArchiveCleanerBuilder<Unconfigured> {
     fn default() -> Self {
         Self::new()
     }
@@ -33,14 +33,14 @@ impl Default for ArchiveCleaner<Unconfigured> {
 pub enum CleanupPolicy {
     /// Keep all entries newer than `now - Duration`
     MaxAge(chrono::Duration),
-    /// Keep at most n entries
+    /// Keep at most N entries
     MaxCount(usize),
-    /// Discard entries older than the `max_age` _and_ keep at most `max_count`
-    Mixed {
+    /// Discard old entries based on age, but keep at least some
+    Retain {
         /// Maximum age of an entry to keep
         max_age: chrono::Duration,
-        /// Maximum number of entries to keep
-        max_count: usize,
+        /// Minimum number of entries to always preserve
+        keep_at_least: usize,
     },
 }
 
@@ -68,13 +68,76 @@ impl Default for CleanupConfiguration {
     }
 }
 
-impl ArchiveCleaner {
+impl ArchiveCleanerBuilder {
     /// Create a new, unconfigured, `ArchiveCleaner`
     pub fn new() -> Self {
         Self {
             configurations: HashMap::new(),
             _state: PhantomData,
         }
+    }
+}
+
+impl<State> ArchiveCleanerBuilder<State> {
+    /// Configure the cleaner for a specific job type
+    pub fn configure<J: BackgroundJob>(
+        mut self,
+        configuration: CleanupConfiguration,
+    ) -> ArchiveCleanerBuilder<Configured> {
+        debug!(
+            job_type = J::JOB_NAME,
+            cleanup_every = ?configuration.cleanup_every,
+            policy = ?configuration.policy,
+            "Configuring archive cleaner for job type"
+        );
+
+        self.configurations
+            .insert(J::JOB_NAME.to_owned(), configuration);
+
+        ArchiveCleanerBuilder {
+            configurations: self.configurations,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl ArchiveCleanerBuilder<Configured> {
+    /// Start the cleaner, spawning a `tokio::task::Task` for each configured job type
+    /// Returns the `ArchiveCleaner` which holds the tasks
+    pub fn run(self, pool: &PgPool) -> ArchiveCleaner {
+        info!(
+            job_types = ?self.configurations.keys().collect::<Vec<_>>(),
+            num_configured = self.configurations.len(),
+            "Starting archive cleaner with configured job types"
+        );
+
+        let handles = self
+            .configurations
+            .into_iter()
+            .map(|(job_type, config)| {
+                tokio::task::spawn(ArchiveCleaner::spawn_cleaner(
+                    job_type,
+                    config,
+                    pool.clone(),
+                ))
+                .abort_handle()
+            })
+            .collect();
+        ArchiveCleaner { handles }
+    }
+}
+
+/// The `ArchiveCleaner` holds the individual cleaner tasks
+#[derive(Debug)]
+pub struct ArchiveCleaner {
+    /// Handles to the spawned tasks
+    handles: Vec<AbortHandle>,
+}
+
+impl ArchiveCleaner {
+    /// Stop all cleaner tasks
+    pub fn stop(self) {
+        self.handles.into_iter().for_each(|h| h.abort());
     }
 
     #[instrument(skip(config, pool))]
@@ -121,18 +184,23 @@ impl ArchiveCleaner {
                         .execute(&pool)
                         .await
                 }
-                CleanupPolicy::Mixed { max_age, max_count } => {
+                CleanupPolicy::Retain {
+                    max_age,
+                    keep_at_least,
+                } => {
                     debug!(
                         max_age = ?max_age,
-                        max_count = max_count,
-                        "Executing Mixed cleanup policy"
+                        keep_at_least = keep_at_least,
+                        "Executing Retain cleanup policy"
                     );
                     sqlx::query(&format!(
                         r"DELETE FROM archived_jobs WHERE job_type = $1 AND
-                          (archived_at < (NOW() - $2) OR
-                           archived_at < (SELECT archived_at FROM archived_jobs WHERE job_type = $1
-                                          ORDER BY archived_at DESC OFFSET {offset} LIMIT 1))",
-                        offset = max_count - 1
+                          archived_at < (NOW() - $2) AND
+                          archived_at < (
+                              SELECT archived_at FROM archived_jobs WHERE job_type = $1
+                              ORDER BY archived_at DESC OFFSET {offset} LIMIT 1
+                          )",
+                        offset = keep_at_least - 1
                     ))
                     .bind(&job_type)
                     .bind(max_age)
@@ -166,50 +234,5 @@ impl ArchiveCleaner {
         }
 
         info!("Archive cleaner task exited");
-    }
-}
-
-impl<State> ArchiveCleaner<State> {
-    /// Configure the cleaner for a specific job type
-    pub fn configure<J: BackgroundJob>(
-        mut self,
-        configuration: CleanupConfiguration,
-    ) -> ArchiveCleaner<Configured> {
-        debug!(
-            job_type = J::JOB_NAME,
-            cleanup_every = ?configuration.cleanup_every,
-            policy = ?configuration.policy,
-            "Configuring archive cleaner for job type"
-        );
-
-        self.configurations
-            .insert(J::JOB_NAME.to_owned(), configuration);
-
-        ArchiveCleaner {
-            configurations: self.configurations,
-            _state: PhantomData,
-        }
-    }
-}
-
-impl ArchiveCleaner<Configured> {
-    /// Start the cleaner, spawning a `tokio::task::Task` for each configured job type
-    /// Returns a `JoinSet` containing all spawned tasks for easy cancellation
-    pub fn run(self, pool: &PgPool) -> JoinSet<()> {
-        info!(
-            job_types = ?self.configurations.keys().collect::<Vec<_>>(),
-            num_configured = self.configurations.len(),
-            "Starting archive cleaner with configured job types"
-        );
-
-        let mut set = JoinSet::new();
-        for (job_type, config) in self.configurations {
-            set.spawn(ArchiveCleaner::spawn_cleaner(
-                job_type,
-                config,
-                pool.clone(),
-            ));
-        }
-        set
     }
 }
