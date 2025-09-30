@@ -723,7 +723,7 @@ async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
     struct TestJob;
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test_archive_cleaner";
+        const JOB_TYPE: &'static str = "test_archive_cleaner";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
@@ -777,7 +777,7 @@ async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
     struct TestJob;
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test_archive_cleaner_count";
+        const JOB_TYPE: &'static str = "test_archive_cleaner_count";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
@@ -836,7 +836,7 @@ async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> 
     struct TestJob;
 
     impl BackgroundJob for TestJob {
-        const JOB_NAME: &'static str = "test_archive_cleaner_count_age";
+        const JOB_TYPE: &'static str = "test_archive_cleaner_count_age";
         type Context = ();
 
         async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {

@@ -29,7 +29,7 @@ use workers::{
 struct ReticulateSplineJob;
 
 impl BackgroundJob for ReticulateSplineJob {
-    const JOB_NAME: &'static str = "reticulate_splines";
+    const JOB_TYPE: &'static str = "reticulate_splines";
     type Context = ();
 
     async fn run(&self, _ctx: Self::Context) -> Result<()> {

@@ -85,14 +85,14 @@ impl<State> ArchiveCleanerBuilder<State> {
         configuration: CleanupConfiguration,
     ) -> ArchiveCleanerBuilder<Configured> {
         debug!(
-            job_type = J::JOB_NAME,
+            job_type = J::JOB_TYPE,
             cleanup_every = ?configuration.cleanup_every,
             policy = ?configuration.policy,
             "Configuring archive cleaner for job type"
         );
 
         self.configurations
-            .insert(J::JOB_NAME.to_owned(), configuration);
+            .insert(J::JOB_TYPE.to_owned(), configuration);
 
         ArchiveCleanerBuilder {
             configurations: self.configurations,
