@@ -1,4 +1,5 @@
 use crate::job_registry::JobRegistry;
+use crate::runner::ArchivalPolicy;
 use crate::storage;
 use crate::util::{try_to_extract_panic_info, with_sentry_transaction};
 use anyhow::anyhow;
@@ -19,7 +20,7 @@ pub(crate) struct Worker<Context> {
     pub(crate) shutdown_when_queue_empty: bool,
     pub(crate) poll_interval: Duration,
     pub(crate) jitter: Duration,
-    pub(crate) archive_completed_jobs: bool,
+    pub(crate) archive_completed_jobs: ArchivalPolicy<Context>,
 }
 
 impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
@@ -94,6 +95,11 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
 
         let job_id = job.id;
         debug!("Running job…");
+        let should_archive = match &self.archive_completed_jobs {
+            ArchivalPolicy::None => false,
+            ArchivalPolicy::All => true,
+            ArchivalPolicy::Predicate(pred_fn) => pred_fn(&context),
+        };
 
         let future = with_sentry_transaction(&job.job_type, async || {
             let run_task_fn = job_registry
@@ -116,7 +122,7 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
         let _enter = span.enter();
         match result {
             Ok(()) => {
-                if self.archive_completed_jobs {
+                if should_archive {
                     debug!("Archiving successful job…");
                     storage::archive_successful_job(&mut tx, job_id).await?;
                 } else {

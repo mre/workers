@@ -16,7 +16,8 @@ use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tokio::sync::Barrier;
 use workers::{
-    ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs, setup_database,
+    ArchivalPolicy, ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs,
+    setup_database,
 };
 
 /// Test utilities and common setup
@@ -457,7 +458,7 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive_completed_jobs(true) // Enable archiving
+            queue.num_workers(1).archive(ArchivalPolicy::All) // Enable archiving
         })
         .shutdown_when_queue_empty();
 
@@ -737,7 +738,7 @@ async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive_completed_jobs(true)
+            queue.num_workers(1).archive(ArchivalPolicy::All)
         })
         .shutdown_when_queue_empty();
 
@@ -791,7 +792,7 @@ async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive_completed_jobs(true)
+            queue.num_workers(1).archive(ArchivalPolicy::All)
         })
         .shutdown_when_queue_empty();
 
@@ -850,7 +851,7 @@ async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> 
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive_completed_jobs(true)
+            queue.num_workers(1).archive(ArchivalPolicy::All)
         })
         .shutdown_when_queue_empty();
 

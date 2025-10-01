@@ -19,7 +19,9 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 use tracing::{debug, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use workers::{ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs};
+use workers::{
+    ArchivalPolicy, ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Notification {
@@ -131,7 +133,7 @@ async fn main() -> Result<()> {
             queue
                 .num_workers(2)
                 .poll_interval(Duration::from_millis(100))
-                .archive_completed_jobs(true) // Enable archiving for audit trail
+                .archive(ArchivalPolicy::All) // Enable archiving for audit trail
         })
         .shutdown_when_queue_empty();
 

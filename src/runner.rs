@@ -91,7 +91,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
                     shutdown_when_queue_empty: self.shutdown_when_queue_empty,
                     poll_interval: queue.poll_interval,
                     jitter: queue.jitter,
-                    archive_completed_jobs: queue.archive_completed_jobs,
+                    archive_completed_jobs: queue.archive_completed_jobs.clone(),
                 };
 
                 let span = info_span!("worker", worker.name = %name);
@@ -135,6 +135,27 @@ impl RunHandle {
     }
 }
 
+/// Archival configuration
+#[derive(Clone)]
+pub enum ArchivalPolicy<Context> {
+    /// Archive nothing
+    None,
+    /// Archive all completed jobs
+    All,
+    /// Archive based on a predicate function
+    Predicate(fn(&Context) -> bool),
+}
+
+impl<Context> std::fmt::Debug for ArchivalPolicy<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "ArchivalPolicy::None"),
+            Self::All => write!(f, "ArchivalPolicy::All"),
+            Self::Predicate(_) => write!(f, "ArchivalPolicy::Predicate(<function>)"),
+        }
+    }
+}
+
 /// Configuration and state for a job queue
 #[derive(Debug)]
 pub struct Queue<Context> {
@@ -142,7 +163,7 @@ pub struct Queue<Context> {
     num_workers: usize,
     poll_interval: Duration,
     jitter: Duration,
-    archive_completed_jobs: bool,
+    archive_completed_jobs: ArchivalPolicy<Context>,
 }
 
 impl<Context> Default for Queue<Context> {
@@ -152,7 +173,7 @@ impl<Context> Default for Queue<Context> {
             num_workers: 1,
             poll_interval: DEFAULT_POLL_INTERVAL,
             jitter: DEFAULT_JITTER,
-            archive_completed_jobs: false,
+            archive_completed_jobs: ArchivalPolicy::None,
         }
     }
 }
@@ -181,12 +202,8 @@ impl<Context> Queue<Context> {
     }
 
     /// Set whether completed jobs should be archived instead of deleted.
-    ///
-    /// When enabled, successfully completed jobs are moved to the `archived_jobs`
-    /// table instead of being deleted. This allows for job history tracking,
-    /// debugging, and potential replay functionality.
-    pub fn archive_completed_jobs(&mut self, archive: bool) -> &mut Self {
-        self.archive_completed_jobs = archive;
+    pub fn archive(&mut self, policy: ArchivalPolicy<Context>) -> &mut Self {
+        self.archive_completed_jobs = policy;
         self
     }
 }
