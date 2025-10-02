@@ -925,7 +925,10 @@ async fn archive_conditionally() -> anyhow::Result<()> {
     runner_handle.wait_for_shutdown().await;
 
     let archived_count = archived_job_count(&pool).await?;
-    assert_eq!(archived_count, 2, "Expected 2 successful jobs to be archived");
+    assert_eq!(
+        archived_count, 2,
+        "Expected 2 successful jobs to be archived"
+    );
 
     Ok(())
 }
