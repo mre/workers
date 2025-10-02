@@ -1,7 +1,7 @@
 use crate::background_job::DEFAULT_QUEUE;
 use crate::job_registry::JobRegistry;
 use crate::worker::Worker;
-use crate::{BackgroundJob, storage};
+use crate::{BackgroundJob, schema, storage};
 use anyhow::anyhow;
 use futures_util::future::join_all;
 use sqlx::PgPool;
@@ -136,22 +136,23 @@ impl RunHandle {
 }
 
 /// Archival configuration
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum ArchivalPolicy<Context> {
     /// Archive nothing
-    None,
+    #[default]
+    Never,
     /// Archive all completed jobs
-    All,
+    Always,
     /// Archive based on a predicate function
-    Predicate(fn(&Context) -> bool),
+    If(fn(&schema::BackgroundJob, &Context) -> bool),
 }
 
 impl<Context> std::fmt::Debug for ArchivalPolicy<Context> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::None => write!(f, "ArchivalPolicy::None"),
-            Self::All => write!(f, "ArchivalPolicy::All"),
-            Self::Predicate(_) => write!(f, "ArchivalPolicy::Predicate(<function>)"),
+            Self::Never => write!(f, "ArchivalPolicy::Never"),
+            Self::Always => write!(f, "ArchivalPolicy::Always"),
+            Self::If(_) => write!(f, "ArchivalPolicy::If(<function>)"),
         }
     }
 }
@@ -173,7 +174,7 @@ impl<Context> Default for Queue<Context> {
             num_workers: 1,
             poll_interval: DEFAULT_POLL_INTERVAL,
             jitter: DEFAULT_JITTER,
-            archive_completed_jobs: ArchivalPolicy::None,
+            archive_completed_jobs: ArchivalPolicy::default(),
         }
     }
 }

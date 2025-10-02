@@ -458,7 +458,7 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive(ArchivalPolicy::All) // Enable archiving
+            queue.num_workers(1).archive(ArchivalPolicy::Always) // Enable archiving
         })
         .shutdown_when_queue_empty();
 
@@ -738,7 +738,7 @@ async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive(ArchivalPolicy::All)
+            queue.num_workers(1).archive(ArchivalPolicy::Always)
         })
         .shutdown_when_queue_empty();
 
@@ -792,7 +792,7 @@ async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive(ArchivalPolicy::All)
+            queue.num_workers(1).archive(ArchivalPolicy::Always)
         })
         .shutdown_when_queue_empty();
 
@@ -851,7 +851,7 @@ async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> 
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive(ArchivalPolicy::All)
+            queue.num_workers(1).archive(ArchivalPolicy::Always)
         })
         .shutdown_when_queue_empty();
 
@@ -883,6 +883,49 @@ async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> 
         archived_job_count(&pool.clone()).await.unwrap(),
         KEEP_JOBS as i64
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn archive_conditionally() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct TestJob;
+
+    // Designed to fail every other run
+    impl BackgroundJob for TestJob {
+        const JOB_TYPE: &'static str = "test_archive_conditionally";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Configure runner with predicate-based archiving
+    let runner = Runner::new(pool.clone(), ())
+        .register_job_type::<TestJob>()
+        .configure_queue("default", |queue| {
+            queue.archive(ArchivalPolicy::If(|job, _ctx| {
+                // Archive only even-numbered jobs, for a 50% sample
+                job.id % 2 == 0
+            }))
+        })
+        .shutdown_when_queue_empty();
+
+    // Enqueue multiple test jobs
+    for _ in 0..4 {
+        TestJob.enqueue(&pool).await?;
+    }
+
+    // Run the workers
+    let runner_handle = runner.start();
+    runner_handle.wait_for_shutdown().await;
+
+    let archived_count = archived_job_count(&pool).await?;
+    assert_eq!(archived_count, 2, "Expected 2 successful jobs to be archived");
 
     Ok(())
 }

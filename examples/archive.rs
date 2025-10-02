@@ -133,7 +133,7 @@ async fn main() -> Result<()> {
             queue
                 .num_workers(2)
                 .poll_interval(Duration::from_millis(100))
-                .archive(ArchivalPolicy::All) // Enable archiving for audit trail
+                .archive(ArchivalPolicy::Always) // Enable archiving for audit trail
         })
         .shutdown_when_queue_empty();
 

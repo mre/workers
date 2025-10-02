@@ -1,5 +1,6 @@
 use crate::job_registry::JobRegistry;
 use crate::runner::ArchivalPolicy;
+use crate::schema;
 use crate::storage;
 use crate::util::{try_to_extract_panic_info, with_sentry_transaction};
 use anyhow::anyhow;
@@ -33,6 +34,14 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
         let jitter_millis = u64::try_from(self.jitter.as_millis()).unwrap_or(u64::MAX);
         let random_jitter = rand::rng().random_range(0..=jitter_millis);
         self.poll_interval + Duration::from_millis(random_jitter)
+    }
+
+    fn should_archive(&self, job: &schema::BackgroundJob, context: &Context) -> bool {
+        match &self.archive_completed_jobs {
+            ArchivalPolicy::Never => false,
+            ArchivalPolicy::Always => true,
+            ArchivalPolicy::If(predicate) => predicate(job, context),
+        }
     }
 
     /// Run background jobs forever, or until the queue is empty if `shutdown_when_queue_empty` is set.
@@ -95,11 +104,7 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
 
         let job_id = job.id;
         debug!("Running job…");
-        let should_archive = match &self.archive_completed_jobs {
-            ArchivalPolicy::None => false,
-            ArchivalPolicy::All => true,
-            ArchivalPolicy::Predicate(pred_fn) => pred_fn(&context),
-        };
+        let should_archive = self.should_archive(&job, &context);
 
         let future = with_sentry_transaction(&job.job_type, async || {
             let run_task_fn = job_registry
