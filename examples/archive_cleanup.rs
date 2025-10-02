@@ -21,8 +21,8 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 use tracing::info;
 use workers::{
-    ArchiveCleanerBuilder, BackgroundJob, CleanupConfiguration, CleanupPolicy, Runner,
-    archived_job_count,
+    ArchivalPolicy, ArchiveCleanerBuilder, BackgroundJob, CleanupConfiguration, CleanupPolicy,
+    Runner, archived_job_count,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
 
     let runner = Runner::new(pool.clone(), ())
         .register_job_type::<ReticulateSplineJob>()
-        .configure_default_queue(|queue| queue.archive_completed_jobs(true))
+        .configure_default_queue(|queue| queue.archive(ArchivalPolicy::Always))
         .shutdown_when_queue_empty();
 
     ArchiveCleanerBuilder::new()

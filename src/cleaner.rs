@@ -69,7 +69,7 @@ impl Default for CleanupConfiguration {
 }
 
 impl ArchiveCleanerBuilder {
-    /// Create a new, unconfigured, `ArchiveCleaner`
+    /// Create a new, unconfigured, `ArchiveCleanerBuilder`
     pub fn new() -> Self {
         Self {
             configurations: HashMap::new(),

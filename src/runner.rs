@@ -1,7 +1,7 @@
 use crate::background_job::DEFAULT_QUEUE;
 use crate::job_registry::JobRegistry;
 use crate::worker::Worker;
-use crate::{BackgroundJob, storage};
+use crate::{BackgroundJob, schema, storage};
 use anyhow::anyhow;
 use futures_util::future::join_all;
 use sqlx::PgPool;
@@ -91,7 +91,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
                     shutdown_when_queue_empty: self.shutdown_when_queue_empty,
                     poll_interval: queue.poll_interval,
                     jitter: queue.jitter,
-                    archive_completed_jobs: queue.archive_completed_jobs,
+                    archive_completed_jobs: queue.archive_completed_jobs.clone(),
                 };
 
                 let span = info_span!("worker", worker.name = %name);
@@ -135,6 +135,28 @@ impl RunHandle {
     }
 }
 
+/// Archival configuration
+#[derive(Clone, Default)]
+pub enum ArchivalPolicy<Context> {
+    /// Archive nothing
+    #[default]
+    Never,
+    /// Archive all completed jobs
+    Always,
+    /// Archive based on a predicate function
+    If(fn(&schema::BackgroundJob, &Context) -> bool),
+}
+
+impl<Context> std::fmt::Debug for ArchivalPolicy<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Never => write!(f, "ArchivalPolicy::Never"),
+            Self::Always => write!(f, "ArchivalPolicy::Always"),
+            Self::If(_) => write!(f, "ArchivalPolicy::If(<function>)"),
+        }
+    }
+}
+
 /// Configuration and state for a job queue
 #[derive(Debug)]
 pub struct Queue<Context> {
@@ -142,7 +164,7 @@ pub struct Queue<Context> {
     num_workers: usize,
     poll_interval: Duration,
     jitter: Duration,
-    archive_completed_jobs: bool,
+    archive_completed_jobs: ArchivalPolicy<Context>,
 }
 
 impl<Context> Default for Queue<Context> {
@@ -152,7 +174,7 @@ impl<Context> Default for Queue<Context> {
             num_workers: 1,
             poll_interval: DEFAULT_POLL_INTERVAL,
             jitter: DEFAULT_JITTER,
-            archive_completed_jobs: false,
+            archive_completed_jobs: ArchivalPolicy::default(),
         }
     }
 }
@@ -181,12 +203,8 @@ impl<Context> Queue<Context> {
     }
 
     /// Set whether completed jobs should be archived instead of deleted.
-    ///
-    /// When enabled, successfully completed jobs are moved to the `archived_jobs`
-    /// table instead of being deleted. This allows for job history tracking,
-    /// debugging, and potential replay functionality.
-    pub fn archive_completed_jobs(&mut self, archive: bool) -> &mut Self {
-        self.archive_completed_jobs = archive;
+    pub fn archive(&mut self, policy: ArchivalPolicy<Context>) -> &mut Self {
+        self.archive_completed_jobs = policy;
         self
     }
 }

@@ -164,11 +164,22 @@ By default, successfully completed jobs are deleted from the database. However, 
 
 ```rust,ignore
 use workers::Runner;
+use runner::ArchivalPolicy;
 
 let runner = Runner::new(pool, context)
     .register_job_type::<MyJob>()
     .configure_queue("important", |queue| {
-        queue.archive_completed_jobs(true)  // Enable archiving
+        queue.archive(ArchivalPolicy::Always)  // Enable archiving
+    });
+
+// We can get much more fine-grained control by using a predicate function:
+let runner = Runner::new(pool, context)
+    .register_job_type::<MyJob>()
+    .configure_queue("fails_sometimes", |queue| {
+        queue.archive(ArchivalPolicy::If(|job, _ctx| {
+            // Archive only jobs that had to retry
+            job.retries > 0
+        }))
     });
 ```
 
