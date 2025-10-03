@@ -8,9 +8,6 @@ use sqlx::PgPool;
 use std::future::Future;
 use tracing::instrument;
 
-/// The default queue name used when no specific queue is specified.
-pub const DEFAULT_QUEUE: &str = "default";
-
 /// Trait for defining background jobs that can be enqueued and executed asynchronously.
 pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// Unique name of the task.
@@ -28,9 +25,6 @@ pub trait BackgroundJob: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// If true, the job will not be enqueued if there is already an unstarted
     /// job with the same data.
     const DEDUPLICATED: bool = false;
-
-    /// Job queue where this job will be executed.
-    const QUEUE: &'static str = DEFAULT_QUEUE;
 
     /// The application data provided to this job at runtime.
     type Context: Clone + Send + 'static;
