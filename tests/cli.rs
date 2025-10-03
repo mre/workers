@@ -906,12 +906,13 @@ async fn archive_conditionally() -> anyhow::Result<()> {
 
     // Configure runner with predicate-based archiving
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
-        .configure_queue("default", |queue| {
-            queue.archive(ArchivalPolicy::If(|job, _ctx| {
-                // Archive only even-numbered jobs, for a 50% sample
-                job.id % 2 == 0
-            }))
+        .configure_queue("default", |mut queue| {
+            queue
+                .register::<TestJob>()
+                .archive(ArchivalPolicy::If(|job, _ctx| {
+                    // Archive only even-numbered jobs, for a 50% sample
+                    job.id % 2 == 0
+                }))
         })
         .shutdown_when_queue_empty();
 
