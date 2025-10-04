@@ -906,7 +906,7 @@ async fn archive_conditionally() -> anyhow::Result<()> {
 
     // Configure runner with predicate-based archiving
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |mut queue| {
+        .configure_queue("default", |queue| {
             queue
                 .register::<TestJob>()
                 .archive(ArchivalPolicy::If(|job, _ctx| {

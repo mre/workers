@@ -60,10 +60,10 @@ impl<Context: Clone + Send + Sync + 'static, State> Runner<Context, State> {
     pub fn configure_queue(
         mut self,
         queue_name: &str,
-        config_fn: impl FnOnce(Queue<Context>) -> Queue<Context, Configured>,
+        config_fn: impl FnOnce(&mut Queue<Context>) -> Queue<Context, Configured>,
     ) -> Runner<Context, Configured> {
         self.queues
-            .insert(queue_name.into(), config_fn(Queue::default()));
+            .insert(queue_name.into(), config_fn(&mut Queue::default()));
 
         Runner {
             connection_pool: self.connection_pool,
