@@ -18,7 +18,7 @@ pub use self::cleaner::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPoli
 /// Error type for job enqueueing operations.
 pub use self::errors::EnqueueError;
 /// The main runner that orchestrates job processing.
-pub use self::runner::{ArchivalPolicy, Runner};
+pub use self::runner::{ArchivalPolicy, Queue, Runner};
 /// Database schema types.
 pub use self::schema::{ArchivedJob, BackgroundJob as BackgroundJobRecord};
 /// Archive functionality.
