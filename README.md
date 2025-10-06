@@ -31,7 +31,6 @@ impl BackgroundJob for SendEmailJob {
     const JOB_TYPE: &'static str = "send_email";
     const PRIORITY: i16 = 10;
     const DEDUPLICATED: bool = false;
-    const QUEUE: &'static str = "emails";
 
     type Context = AppContext;
 
@@ -50,11 +49,12 @@ use workers::Runner;
 use std::time::Duration;
 
 let runner = Runner::new(connection_pool, app_context)
-    .register_job_type::<SendEmailJob>()
     .configure_queue("emails", |queue| {
-        queue.num_workers(2)
-             .poll_interval(Duration::from_secs(5))
-             .jitter(Duration::from_millis(500))
+        queue
+        .register::<SendEmailJob>()
+        .num_workers(2)
+        .poll_interval(Duration::from_secs(5))
+        .jitter(Duration::from_millis(500))
     });
 
 let handle = runner.start();
@@ -167,16 +167,18 @@ use workers::Runner;
 use runner::ArchivalPolicy;
 
 let runner = Runner::new(pool, context)
-    .register_job_type::<MyJob>()
     .configure_queue("important", |queue| {
-        queue.archive(ArchivalPolicy::Always)  // Enable archiving
+        queue
+        .register::<MyJob>()
+        .archive(ArchivalPolicy::Always)  // Enable archiving
     });
 
 // We can get much more fine-grained control by using a predicate function:
 let runner = Runner::new(pool, context)
-    .register_job_type::<MyJob>()
     .configure_queue("fails_sometimes", |queue| {
-        queue.archive(ArchivalPolicy::If(|job, _ctx| {
+        queue
+        .register::<MyJob>()
+        .archive(ArchivalPolicy::If(|job, _ctx| {
             // Archive only jobs that had to retry
             job.retries > 0
         }))
