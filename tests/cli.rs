@@ -16,8 +16,8 @@ use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tokio::sync::Barrier;
 use workers::{
-    ArchivalPolicy, ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs,
-    setup_database,
+    ArchivalPolicy, ArchiveQuery, BackgroundJob, Queue, Runner, archived_job_count,
+    get_archived_jobs, setup_database,
 };
 
 /// Test utilities and common setup
@@ -68,9 +68,7 @@ mod test_utils {
         pool: PgPool,
         context: Context,
     ) -> Runner<Context> {
-        Runner::new(pool, context)
-            .configure_default_queue(|queue| queue.num_workers(2))
-            .shutdown_when_queue_empty()
+        Runner::new(pool, context).shutdown_when_queue_empty()
     }
 }
 
@@ -161,7 +159,7 @@ async fn jobs_are_locked_when_fetched() -> anyhow::Result<()> {
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), test_context.clone())
-        .register_job_type::<TestJob>();
+        .configure_queue("default", Queue::register::<TestJob>);
 
     let job_id = assert_some!(TestJob.enqueue(&pool).await?);
 
@@ -205,7 +203,8 @@ async fn jobs_are_deleted_when_successfully_run() -> anyhow::Result<()> {
 
     let (pool, _container) = test_utils::setup_test_db().await?;
 
-    let runner = test_utils::create_test_runner(pool.clone(), ()).register_job_type::<TestJob>();
+    let runner = test_utils::create_test_runner(pool.clone(), ())
+        .configure_queue("default", Queue::register::<TestJob>);
 
     assert_eq!(remaining_jobs(&pool).await?, 0);
 
@@ -246,7 +245,7 @@ async fn failed_jobs_do_not_release_lock_before_updating_retry_time() -> anyhow:
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), test_context.clone())
-        .register_job_type::<TestJob>();
+        .configure_queue("default", Queue::register::<TestJob>);
 
     TestJob.enqueue(&pool).await?;
 
@@ -291,7 +290,8 @@ async fn panicking_in_jobs_updates_retry_counter() -> anyhow::Result<()> {
 
     let (pool, _container) = test_utils::setup_test_db().await?;
 
-    let runner = test_utils::create_test_runner(pool.clone(), ()).register_job_type::<TestJob>();
+    let runner = test_utils::create_test_runner(pool.clone(), ())
+        .configure_queue("default", Queue::register::<TestJob>);
 
     let job_id = assert_some!(TestJob.enqueue(&pool).await?);
 
@@ -354,7 +354,7 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = Runner::new(pool.clone(), test_context.clone())
-        .register_job_type::<TestJob>()
+        .configure_queue("default", Queue::register::<TestJob>)
         .shutdown_when_queue_empty();
 
     // Enqueue first job
@@ -411,9 +411,9 @@ async fn jitter_configuration_affects_polling() -> anyhow::Result<()> {
 
     // Test that jitter configuration is accepted and compiles
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
             queue
+                .register::<TestJob>()
                 .num_workers(1)
                 .poll_interval(Duration::from_millis(100))
                 .jitter(Duration::from_millis(50)) // Add up to 50ms jitter
@@ -456,9 +456,11 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive(ArchivalPolicy::Always) // Enable archiving
+            queue
+                .register::<TestJob>()
+                .num_workers(1)
+                .archive(ArchivalPolicy::Always) // Enable archiving
         })
         .shutdown_when_queue_empty();
 
@@ -736,9 +738,11 @@ async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive(ArchivalPolicy::Always)
+            queue
+                .register::<TestJob>()
+                .num_workers(1)
+                .archive(ArchivalPolicy::Always)
         })
         .shutdown_when_queue_empty();
 
@@ -790,9 +794,11 @@ async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive(ArchivalPolicy::Always)
+            queue
+                .register::<TestJob>()
+                .num_workers(1)
+                .archive(ArchivalPolicy::Always)
         })
         .shutdown_when_queue_empty();
 
@@ -849,9 +855,11 @@ async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> 
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.num_workers(1).archive(ArchivalPolicy::Always)
+            queue
+                .register::<TestJob>()
+                .num_workers(1)
+                .archive(ArchivalPolicy::Always)
         })
         .shutdown_when_queue_empty();
 
@@ -906,12 +914,13 @@ async fn archive_conditionally() -> anyhow::Result<()> {
 
     // Configure runner with predicate-based archiving
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<TestJob>()
         .configure_queue("default", |queue| {
-            queue.archive(ArchivalPolicy::If(|job, _ctx| {
-                // Archive only even-numbered jobs, for a 50% sample
-                job.id % 2 == 0
-            }))
+            queue
+                .register::<TestJob>()
+                .archive(ArchivalPolicy::If(|job, _ctx| {
+                    // Archive only even-numbered jobs, for a 50% sample
+                    job.id % 2 == 0
+                }))
         })
         .shutdown_when_queue_empty();
 

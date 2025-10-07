@@ -127,10 +127,10 @@ async fn main() -> Result<()> {
 
     // Create runner with archiving enabled for important jobs
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<NotificationJob>()
-        .register_job_type::<PaymentJob>()
         .configure_queue("default", |queue| {
             queue
+                .register::<NotificationJob>()
+                .register::<PaymentJob>()
                 .num_workers(2)
                 .poll_interval(Duration::from_millis(100))
                 .archive(ArchivalPolicy::Always) // Enable archiving for audit trail

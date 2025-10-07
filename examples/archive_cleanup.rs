@@ -76,8 +76,11 @@ async fn main() -> Result<()> {
     let (pool, _container) = setup_database().await?;
 
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<ReticulateSplineJob>()
-        .configure_default_queue(|queue| queue.archive(ArchivalPolicy::Always))
+        .configure_queue("default", |queue| {
+            queue
+                .register::<ReticulateSplineJob>()
+                .archive(ArchivalPolicy::Always)
+        })
         .shutdown_when_queue_empty();
 
     ArchiveCleanerBuilder::new()

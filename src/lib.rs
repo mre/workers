@@ -13,14 +13,12 @@ mod worker;
 
 /// The main trait for defining background jobs.
 pub use self::background_job::BackgroundJob;
-/// The default queue name used when no specific queue is specified.
-pub use self::background_job::DEFAULT_QUEUE;
 /// The archive cleaner for purging archived jobs.
 pub use self::cleaner::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
 /// Error type for job enqueueing operations.
 pub use self::errors::EnqueueError;
 /// The main runner that orchestrates job processing.
-pub use self::runner::{ArchivalPolicy, Runner};
+pub use self::runner::{ArchivalPolicy, Queue, Runner};
 /// Database schema types.
 pub use self::schema::{ArchivedJob, BackgroundJob as BackgroundJobRecord};
 /// Archive functionality.
