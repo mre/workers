@@ -84,6 +84,17 @@ job.enqueue(&mut conn).await?;
 
 ### Queue Configuration
 
+A queue is a named "worker pool" with its own dedicated set of workers.
+Queues are about **resource allocation and isolation**, while job types define **the specific task logic and data**.
+
+Multiple different job types can share the same queue, and that's often desirable.
+Queues solve a critical problem: preventing slow or resource-constrained jobs from blocking unrelated work.
+
+For example, if you have several job types that make API calls to a rate-limited external service (like GitHub's API
+with 5000 requests/hour), you might route all those job types to a dedicated `github` queue with one worker to stay under the limit,
+while keeping your high-volume email jobs in a separate queue with ten workers for maximum throughput.
+Each queue can be tuned independently based on the resource constraints and throughput needs of the job types it handles.
+
 - **Worker count**: Number of concurrent workers per queue
 - **Poll interval**: How often workers check for new jobs
 - **Jitter**: Random time added to poll intervals to reduce thundering herd effects (default: 100ms)
