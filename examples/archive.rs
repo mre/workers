@@ -127,13 +127,14 @@ async fn main() -> Result<()> {
 
     // Create runner with archiving enabled for important jobs
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |queue| {
+        .configure_queue(|queue| {
             queue
                 .register::<NotificationJob>()
                 .register::<PaymentJob>()
                 .num_workers(2)
                 .poll_interval(Duration::from_millis(100))
                 .archive(ArchivalPolicy::Always) // Enable archiving for audit trail
+                .with_name("notifications_payments")
         })
         .shutdown_when_queue_empty();
 

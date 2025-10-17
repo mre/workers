@@ -159,7 +159,7 @@ async fn jobs_are_locked_when_fetched() -> anyhow::Result<()> {
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), test_context.clone())
-        .configure_queue("default", Queue::register::<TestJob>);
+        .configure_queue(Queue::register::<TestJob>);
 
     let job_id = assert_some!(TestJob.enqueue(&pool).await?);
 
@@ -204,7 +204,7 @@ async fn jobs_are_deleted_when_successfully_run() -> anyhow::Result<()> {
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), ())
-        .configure_queue("default", Queue::register::<TestJob>);
+        .configure_queue(Queue::register::<TestJob>);
 
     assert_eq!(remaining_jobs(&pool).await?, 0);
 
@@ -245,7 +245,7 @@ async fn failed_jobs_do_not_release_lock_before_updating_retry_time() -> anyhow:
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), test_context.clone())
-        .configure_queue("default", Queue::register::<TestJob>);
+        .configure_queue(Queue::register::<TestJob>);
 
     TestJob.enqueue(&pool).await?;
 
@@ -291,7 +291,7 @@ async fn panicking_in_jobs_updates_retry_counter() -> anyhow::Result<()> {
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = test_utils::create_test_runner(pool.clone(), ())
-        .configure_queue("default", Queue::register::<TestJob>);
+        .configure_queue(Queue::register::<TestJob>);
 
     let job_id = assert_some!(TestJob.enqueue(&pool).await?);
 
@@ -354,7 +354,7 @@ async fn jobs_can_be_deduplicated() -> anyhow::Result<()> {
     let (pool, _container) = test_utils::setup_test_db().await?;
 
     let runner = Runner::new(pool.clone(), test_context.clone())
-        .configure_queue("default", Queue::register::<TestJob>)
+        .configure_queue(Queue::register::<TestJob>)
         .shutdown_when_queue_empty();
 
     // Enqueue first job
@@ -411,7 +411,7 @@ async fn jitter_configuration_affects_polling() -> anyhow::Result<()> {
 
     // Test that jitter configuration is accepted and compiles
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |queue| {
+        .configure_queue(|queue| {
             queue
                 .register::<TestJob>()
                 .num_workers(1)
@@ -456,7 +456,7 @@ async fn archive_functionality_works() -> anyhow::Result<()> {
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |queue| {
+        .configure_queue(|queue| {
             queue
                 .register::<TestJob>()
                 .num_workers(1)
@@ -738,7 +738,7 @@ async fn archive_cleaner_removes_old_jobs() -> anyhow::Result<()> {
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |queue| {
+        .configure_queue(|queue| {
             queue
                 .register::<TestJob>()
                 .num_workers(1)
@@ -794,7 +794,7 @@ async fn archive_cleaner_keeps_last_n_jobs() -> anyhow::Result<()> {
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |queue| {
+        .configure_queue(|queue| {
             queue
                 .register::<TestJob>()
                 .num_workers(1)
@@ -855,7 +855,7 @@ async fn archive_cleaner_keeps_last_n_jobs_discards_old() -> anyhow::Result<()> 
 
     // Configure runner with archiving enabled
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |queue| {
+        .configure_queue(|queue| {
             queue
                 .register::<TestJob>()
                 .num_workers(1)
@@ -914,7 +914,7 @@ async fn archive_conditionally() -> anyhow::Result<()> {
 
     // Configure runner with predicate-based archiving
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |queue| {
+        .configure_queue(|queue| {
             queue
                 .register::<TestJob>()
                 .archive(ArchivalPolicy::If(|job, _ctx| {
@@ -939,5 +939,31 @@ async fn archive_conditionally() -> anyhow::Result<()> {
         "Expected 2 successful jobs to be archived"
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn show_potential_api() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct SomeJob;
+
+    impl BackgroundJob for SomeJob {
+        const JOB_TYPE: &'static str = "test_archive_conditionally";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    let _runner = Runner::new(pool, ())
+        .add_queue(
+            Queue::default()
+                .register::<SomeJob>()
+                .archive(ArchivalPolicy::If(|job, _ctx| job.id % 2 == 0)),
+        )
+        .shutdown_when_queue_empty();
     Ok(())
 }

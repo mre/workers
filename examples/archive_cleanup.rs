@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
     let (pool, _container) = setup_database().await?;
 
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue("default", |queue| {
+        .configure_queue(|queue| {
             queue
                 .register::<ReticulateSplineJob>()
                 .archive(ArchivalPolicy::Always)

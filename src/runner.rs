@@ -3,7 +3,6 @@ use crate::worker::Worker;
 use crate::{BackgroundJob, schema};
 use futures_util::future::join_all;
 use sqlx::PgPool;
-use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,7 +24,7 @@ pub struct Unconfigured;
 /// The core runner responsible for locking and running jobs
 pub struct Runner<Context: Clone + Send + Sync + 'static, State = Unconfigured> {
     connection_pool: PgPool,
-    queues: HashMap<String, Queue<Context, Configured>>,
+    queues: Vec<Queue<Context, Configured>>,
     context: Context,
     shutdown_when_queue_empty: bool,
     _state: PhantomData<State>,
@@ -36,7 +35,15 @@ impl<Context: std::fmt::Debug + Clone + Sync + Send, State: std::fmt::Debug> std
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Runner")
-            .field("queues", &self.queues.keys().collect::<Vec<_>>())
+            .field(
+                "queues",
+                &self
+                    .queues
+                    .iter()
+                    .enumerate()
+                    .map(|(qid, q)| q.worker_name(qid))
+                    .collect::<Vec<_>>(),
+            )
             .field("context", &self.context)
             .field("shutdown_when_queue_empty", &self.shutdown_when_queue_empty)
             .finish()
@@ -48,7 +55,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
     pub fn new(connection_pool: PgPool, context: Context) -> Self {
         Self {
             connection_pool,
-            queues: HashMap::new(),
+            queues: Vec::new(),
             context,
             shutdown_when_queue_empty: false,
             _state: PhantomData,
@@ -57,14 +64,24 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
 }
 
 impl<Context: Clone + Send + Sync + 'static, State> Runner<Context, State> {
+    /// TODO: Tentative API - replace `configure_queue` if accepted
+    pub fn add_queue(mut self, queue: Queue<Context, Configured>) -> Runner<Context, Configured> {
+        self.queues.push(queue);
+        Runner {
+            connection_pool: self.connection_pool,
+            queues: self.queues,
+            context: self.context,
+            shutdown_when_queue_empty: self.shutdown_when_queue_empty,
+            _state: PhantomData,
+        }
+    }
+
     /// Configure a queue
     pub fn configure_queue(
         mut self,
-        queue_name: &str,
         config_fn: impl FnOnce(Queue<Context>) -> Queue<Context, Configured>,
     ) -> Runner<Context, Configured> {
-        self.queues
-            .insert(queue_name.into(), config_fn(Queue::default()));
+        self.queues.push(config_fn(Queue::default()));
 
         Runner {
             connection_pool: self.connection_pool,
@@ -88,9 +105,12 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context, Configured> {
     /// This returns a `RunningRunner` which can be used to wait for the workers to shutdown.
     pub fn start(&self) -> RunHandle {
         let mut handles = Vec::new();
-        for (queue_name, queue) in &self.queues {
+        for (queue_index, queue) in self.queues.iter().enumerate() {
             for i in 1..=queue.num_workers {
-                let name = format!("background-worker-{queue_name}-{i}");
+                let name = format!(
+                    "background-worker-{queue_name}-{i}",
+                    queue_name = queue.worker_name(queue_index)
+                );
                 info!(worker.name = %name, "Starting worker…");
 
                 let worker = Worker {
@@ -156,6 +176,7 @@ impl<Context> std::fmt::Debug for ArchivalPolicy<Context> {
 /// Configuration and state for a job queue
 #[derive(Debug)]
 pub struct Queue<Context: Clone + Send + Sync + 'static, State = Unconfigured> {
+    name: Option<String>,
     job_registry: JobRegistry<Context>,
     num_workers: usize,
     poll_interval: Duration,
@@ -167,6 +188,7 @@ pub struct Queue<Context: Clone + Send + Sync + 'static, State = Unconfigured> {
 impl<Context: Clone + Send + Sync + 'static> Default for Queue<Context, Unconfigured> {
     fn default() -> Self {
         Self {
+            name: None,
             job_registry: JobRegistry::default(),
             num_workers: 1,
             poll_interval: DEFAULT_POLL_INTERVAL,
@@ -178,6 +200,21 @@ impl<Context: Clone + Send + Sync + 'static> Default for Queue<Context, Unconfig
 }
 
 impl<Context: Clone + Send + Sync + 'static, State> Queue<Context, State> {
+    /// Get the name of the queue otherwise default to its number
+    pub fn worker_name(&self, nth: usize) -> String {
+        if let Some(name) = &self.name {
+            name.clone()
+        } else {
+            nth.to_string()
+        }
+    }
+
+    /// Set a name for the queue for clearer logs
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_owned());
+        self
+    }
+
     /// Set the number of worker threads for this queue.
     pub fn num_workers(mut self, num_workers: usize) -> Self {
         self.num_workers = num_workers;
@@ -210,6 +247,7 @@ impl<Context: Clone + Send + Sync + 'static, State> Queue<Context, State> {
     pub fn register<J: BackgroundJob<Context = Context>>(mut self) -> Queue<Context, Configured> {
         self.job_registry.register::<J>();
         Queue {
+            name: self.name,
             job_registry: self.job_registry,
             num_workers: self.num_workers,
             poll_interval: self.poll_interval,
