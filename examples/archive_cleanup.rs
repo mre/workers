@@ -22,7 +22,7 @@ use testcontainers_modules::postgres::Postgres;
 use tracing::info;
 use workers::{
     ArchivalPolicy, ArchiveCleanerBuilder, BackgroundJob, CleanupConfiguration, CleanupPolicy,
-    Runner, archived_job_count,
+    Queue, Runner, archived_job_count,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -76,11 +76,11 @@ async fn main() -> Result<()> {
     let (pool, _container) = setup_database().await?;
 
     let runner = Runner::new(pool.clone(), ())
-        .configure_queue(|queue| {
-            queue
+        .add_queue(
+            Queue::new("spline_reticulator")
                 .register::<ReticulateSplineJob>()
-                .archive(ArchivalPolicy::Always)
-        })
+                .archive(ArchivalPolicy::Always),
+        )
         .shutdown_when_queue_empty();
 
     ArchiveCleanerBuilder::new()

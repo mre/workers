@@ -41,7 +41,7 @@ impl<Context: std::fmt::Debug + Clone + Sync + Send, State: std::fmt::Debug> std
                     .queues
                     .iter()
                     .enumerate()
-                    .map(|(qid, q)| q.worker_name(qid))
+                    .map(|(qid, q)| q.name.clone().unwrap_or_else(|| qid.to_string()))
                     .collect::<Vec<_>>(),
             )
             .field("context", &self.context)
@@ -76,22 +76,6 @@ impl<Context: Clone + Send + Sync + 'static, State> Runner<Context, State> {
         }
     }
 
-    /// Configure a queue
-    pub fn configure_queue(
-        mut self,
-        config_fn: impl FnOnce(Queue<Context>) -> Queue<Context, Configured>,
-    ) -> Runner<Context, Configured> {
-        self.queues.push(config_fn(Queue::default()));
-
-        Runner {
-            connection_pool: self.connection_pool,
-            queues: self.queues,
-            context: self.context,
-            shutdown_when_queue_empty: self.shutdown_when_queue_empty,
-            _state: PhantomData,
-        }
-    }
-
     /// Set the runner to shut down when the background job queue is empty.
     pub fn shutdown_when_queue_empty(mut self) -> Self {
         self.shutdown_when_queue_empty = true;
@@ -106,10 +90,13 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context, Configured> {
     pub fn start(&self) -> RunHandle {
         let mut handles = Vec::new();
         for (queue_index, queue) in self.queues.iter().enumerate() {
-            for i in 1..=queue.num_workers {
+            for i in 0..queue.num_workers {
                 let name = format!(
-                    "background-worker-{queue_name}-{i}",
-                    queue_name = queue.worker_name(queue_index)
+                    "queue-{queue_name}-worker-{i}",
+                    queue_name = queue
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| queue_index.to_string()),
                 );
                 info!(worker.name = %name, "Starting worker…");
 
@@ -176,7 +163,8 @@ impl<Context> std::fmt::Debug for ArchivalPolicy<Context> {
 /// Configuration and state for a job queue
 #[derive(Debug)]
 pub struct Queue<Context: Clone + Send + Sync + 'static, State = Unconfigured> {
-    name: Option<String>,
+    /// Queue name can be set for clearer log output
+    pub name: Option<String>,
     job_registry: JobRegistry<Context>,
     num_workers: usize,
     poll_interval: Duration,
@@ -198,23 +186,20 @@ impl<Context: Clone + Send + Sync + 'static> Default for Queue<Context, Unconfig
         }
     }
 }
-
-impl<Context: Clone + Send + Sync + 'static, State> Queue<Context, State> {
-    /// Get the name of the queue otherwise default to its number
-    pub fn worker_name(&self, nth: usize) -> String {
-        if let Some(name) = &self.name {
-            name.clone()
-        } else {
-            nth.to_string()
+impl<Context: Clone + Send + Sync + 'static> Queue<Context> {
+    /// Make a new, named queue
+    /// The name is used only in logging.
+    ///
+    /// Use `Queue::default()` if you don't need a name.
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: Some(name.to_string()),
+            ..Default::default()
         }
     }
+}
 
-    /// Set a name for the queue for clearer logs
-    pub fn with_name(mut self, name: &str) -> Self {
-        self.name = Some(name.to_owned());
-        self
-    }
-
+impl<Context: Clone + Send + Sync + 'static, State> Queue<Context, State> {
     /// Set the number of worker threads for this queue.
     pub fn num_workers(mut self, num_workers: usize) -> Self {
         self.num_workers = num_workers;
