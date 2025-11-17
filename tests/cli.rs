@@ -941,29 +941,3 @@ async fn archive_conditionally() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-#[tokio::test]
-async fn show_potential_api() -> anyhow::Result<()> {
-    #[derive(Serialize, Deserialize)]
-    struct SomeJob;
-
-    impl BackgroundJob for SomeJob {
-        const JOB_TYPE: &'static str = "test_archive_conditionally";
-        type Context = ();
-
-        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    let (pool, _container) = test_utils::setup_test_db().await?;
-
-    let _runner = Runner::new(pool, ())
-        .add_queue(
-            Queue::default()
-                .register::<SomeJob>()
-                .archive(ArchivalPolicy::If(|job, _ctx| job.id % 2 == 0)),
-        )
-        .shutdown_when_queue_empty();
-    Ok(())
-}
