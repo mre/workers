@@ -24,12 +24,11 @@ pub struct CatchPokemonJob {
 impl BackgroundJob for CatchPokemonJob {
     const JOB_TYPE: &'static str = "catch_pokemon";
     const PRIORITY: i16 = 10; // Higher priority for catching!
-    const QUEUE: &'static str = "field_work";
     type Context = PokemonContext;
 
     async fn run(&self, ctx: Self::Context) -> Result<()> {
         let catch_time = Duration::from_millis(rand::thread_rng().gen_range(100..800));
-        
+
         info!(
             "🎯 Attempting to catch {} (Level {}) at {}...",
             self.pokemon_name, self.pokemon_level, self.location
@@ -48,17 +47,14 @@ impl BackgroundJob for CatchPokemonJob {
         };
 
         let roll = rand::thread_rng().gen_range(0.0..100.0);
-        
+
         if roll < success_rate {
             info!(
                 "✌️ Successfully caught {}! Added to Pokédex.",
                 self.pokemon_name
             );
         } else {
-            warn!(
-                "💨 {} broke free and escaped!",
-                self.pokemon_name
-            );
+            warn!("💨 {} broke free and escaped!", self.pokemon_name);
         }
 
         Ok(())
@@ -76,13 +72,12 @@ pub struct TrainPokemonJob {
 impl BackgroundJob for TrainPokemonJob {
     const JOB_TYPE: &'static str = "train_pokemon";
     const PRIORITY: i16 = 5;
-    const QUEUE: &'static str = "training";
     const DEDUPLICATED: bool = true; // Don't train the same Pokemon multiple times
     type Context = PokemonContext;
 
     async fn run(&self, _ctx: Self::Context) -> Result<()> {
         let training_time = Duration::from_millis(rand::thread_rng().gen_range(200..1500));
-        
+
         info!(
             "🏋️‍♂️ Starting {} training for {} (Level {})...",
             self.training_method, self.pokemon_name, self.current_level
@@ -113,25 +108,23 @@ pub struct HealPokemonJob {
 impl BackgroundJob for HealPokemonJob {
     const JOB_TYPE: &'static str = "heal_pokemon";
     const PRIORITY: i16 = 15; // Healing is urgent!
-    const QUEUE: &'static str = "pokemon_center";
     type Context = PokemonContext;
 
     async fn run(&self, _ctx: Self::Context) -> Result<()> {
         let healing_time = Duration::from_millis(
-            self.pokemon_names.len() as u64 * rand::thread_rng().gen_range(100..400)
+            self.pokemon_names.len() as u64 * rand::thread_rng().gen_range(100..400),
         );
-        
+
         info!(
             "🏥 Nurse Joy is healing {} Pokemon ({} injuries)...",
-            self.pokemon_names.len(), self.injury_severity
+            self.pokemon_names.len(),
+            self.injury_severity
         );
 
         // Simulate healing process
         sleep(healing_time).await;
 
-        info!(
-            "✨ All Pokemon have been fully healed! They're ready for adventure again."
-        );
+        info!("✨ All Pokemon have been fully healed! They're ready for adventure again.");
 
         Ok(())
     }
@@ -148,12 +141,11 @@ pub struct GymBattleJob {
 impl BackgroundJob for GymBattleJob {
     const JOB_TYPE: &'static str = "gym_battle";
     const PRIORITY: i16 = 20; // Gym battles are the highest priority!
-    const QUEUE: &'static str = "gym_battles";
     type Context = PokemonContext;
 
     async fn run(&self, ctx: Self::Context) -> Result<()> {
         let battle_time = Duration::from_millis(rand::thread_rng().gen_range(1000..3000));
-        
+
         info!(
             "💥️  Challenging {} ({} Gym) in {} City!",
             self.gym_leader, self.gym_type, self.city
@@ -192,12 +184,11 @@ pub struct ExploreAreaJob {
 impl BackgroundJob for ExploreAreaJob {
     const JOB_TYPE: &'static str = "explore_area";
     const PRIORITY: i16 = 3;
-    const QUEUE: &'static str = "exploration";
     type Context = PokemonContext;
 
     async fn run(&self, ctx: Self::Context) -> Result<()> {
         let exploration_time = Duration::from_millis(rand::thread_rng().gen_range(300..1200));
-        
+
         info!(
             "🗺️  {} is exploring {} ({} terrain)...",
             ctx.trainer_name, self.area_name, self.terrain_type
@@ -217,10 +208,7 @@ impl BackgroundJob for ExploreAreaJob {
 
         for _i in 0..discoveries {
             let pokemon = pokemon_types[rand::thread_rng().gen_range(0..pokemon_types.len())];
-            info!(
-                "👀 Discovered a wild {}!",
-                pokemon
-            );
+            info!("👀 Discovered a wild {}!", pokemon);
         }
 
         info!(
