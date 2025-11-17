@@ -35,15 +35,7 @@ impl<Context: std::fmt::Debug + Clone + Sync + Send, State: std::fmt::Debug> std
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Runner")
-            .field(
-                "queues",
-                &self
-                    .queues
-                    .iter()
-                    .enumerate()
-                    .map(|(qid, q)| q.name.clone().unwrap_or_else(|| qid.to_string()))
-                    .collect::<Vec<_>>(),
-            )
+            .field("queues", &self.collect_queue_names())
             .field("context", &self.context)
             .field("shutdown_when_queue_empty", &self.shutdown_when_queue_empty)
             .finish()
@@ -64,7 +56,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context> {
 }
 
 impl<Context: Clone + Send + Sync + 'static, State> Runner<Context, State> {
-    /// TODO: Tentative API - replace `configure_queue` if accepted
+    /// Add a configured queue to the runner.
     pub fn add_queue(mut self, queue: Queue<Context, Configured>) -> Runner<Context, Configured> {
         self.queues.push(queue);
         Runner {
@@ -81,6 +73,15 @@ impl<Context: Clone + Send + Sync + 'static, State> Runner<Context, State> {
         self.shutdown_when_queue_empty = true;
         self
     }
+
+    /// Collect the names of all queues in the runner.
+    pub fn collect_queue_names(&self) -> Vec<String> {
+        self.queues
+            .iter()
+            .enumerate()
+            .map(|(qid, q)| q.name.clone().unwrap_or_else(|| qid.to_string()))
+            .collect::<Vec<_>>()
+    }
 }
 
 impl<Context: Clone + Send + Sync + 'static> Runner<Context, Configured> {
@@ -91,6 +92,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context, Configured> {
         let mut handles = Vec::new();
         for (queue_index, queue) in self.queues.iter().enumerate() {
             for i in 0..queue.num_workers {
+                // Did not go for a method on the queue for the name because it would require passing in the index as a parameter, which would be ugly.
                 let name = format!(
                     "queue-{queue_name}-worker-{i}",
                     queue_name = queue
@@ -191,7 +193,7 @@ impl<Context: Clone + Send + Sync + 'static> Queue<Context> {
     /// The name is used only in logging.
     ///
     /// Use `Queue::default()` if you don't need a name.
-    pub fn new(name: &str) -> Self {
+    pub fn named(name: &str) -> Self {
         Self {
             name: Some(name.to_string()),
             ..Default::default()

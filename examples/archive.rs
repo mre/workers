@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
     // Create runner with archiving enabled for important jobs
     let runner = Runner::new(pool.clone(), ())
         .add_queue(
-            Queue::new("notifications_payments")
+            Queue::named("notifications_payments")
                 .register::<NotificationJob>()
                 .register::<PaymentJob>()
                 .num_workers(2)

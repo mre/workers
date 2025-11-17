@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
 
     let runner = Runner::new(pool.clone(), ())
         .add_queue(
-            Queue::new("spline_reticulator")
+            Queue::named("spline_reticulator")
                 .register::<ReticulateSplineJob>()
                 .archive(ArchivalPolicy::Always),
         )
