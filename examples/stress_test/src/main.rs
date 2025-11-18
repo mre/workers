@@ -12,7 +12,7 @@ use testcontainers_modules::postgres::Postgres;
 use tokio::time::{Instant, sleep};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use workers::{BackgroundJob, Runner};
+use workers::{BackgroundJob, Queue, Runner};
 
 /// Pokemon Stress Test - Demonstrates high-throughput job processing
 #[derive(Parser)]
@@ -308,39 +308,39 @@ async fn main() -> Result<()> {
     // Setup worker queues with different configurations
     info!("⚙️  Setting up worker queues...");
     let runner = Runner::new(pool.clone(), trainer_context.clone())
-        .register_job_type::<CatchPokemonJob>()
-        .register_job_type::<TrainPokemonJob>()
-        .register_job_type::<HealPokemonJob>()
-        .register_job_type::<GymBattleJob>()
-        .register_job_type::<ExploreAreaJob>()
-        .shutdown_when_queue_empty() // Stop when all jobs are processed
-        .configure_queue("field_work", |queue| {
-            queue
+        .add_queue(
+            Queue::named("field_work")
+                .register::<CatchPokemonJob>()
                 .num_workers(args.workers)
                 .poll_interval(Duration::from_millis(50))
-                .jitter(Duration::from_millis(25))
-        })
-        .configure_queue("training", |queue| {
-            queue
+                .jitter(Duration::from_millis(25)),
+        )
+        .add_queue(
+            Queue::named("training")
+                .register::<TrainPokemonJob>()
                 .num_workers(args.workers / 2)
                 .poll_interval(Duration::from_millis(100))
-                .jitter(Duration::from_millis(50))
-        })
-        .configure_queue("pokemon_center", |queue| {
-            queue
+                .jitter(Duration::from_millis(50)),
+        )
+        .add_queue(
+            Queue::named("pokemon_center")
+                .register::<HealPokemonJob>()
                 .num_workers(args.workers / 4)
-                .poll_interval(Duration::from_millis(100))
-        })
-        .configure_queue("gym_battles", |queue| {
-            queue
+                .poll_interval(Duration::from_millis(100)),
+        )
+        .add_queue(
+            Queue::named("gym_battles")
+                .register::<GymBattleJob>()
                 .num_workers(2)
-                .poll_interval(Duration::from_millis(200))
-        })
-        .configure_queue("exploration", |queue| {
-            queue
+                .poll_interval(Duration::from_millis(200)),
+        )
+        .add_queue(
+            Queue::named("exploration")
+                .register::<ExploreAreaJob>()
                 .num_workers(args.workers)
-                .poll_interval(Duration::from_millis(150))
-        });
+                .poll_interval(Duration::from_millis(150)),
+        )
+        .shutdown_when_queue_empty(); // Stop when all jobs are processed
 
     info!("✅ Worker configuration complete:");
     info!(

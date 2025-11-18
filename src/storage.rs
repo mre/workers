@@ -15,13 +15,6 @@ pub enum ArchiveQuery {
     },
 }
 
-/// The number of jobs that have failed at least once
-pub(crate) async fn failed_job_count(pool: &PgPool) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM background_jobs WHERE retries > 0")
-        .fetch_one(pool)
-        .await
-}
-
 /// Finds the next job that is unlocked, and ready to be retried.
 pub(crate) async fn find_next_unlocked_job_tx(
     tx: &mut Transaction<'_, Postgres>,

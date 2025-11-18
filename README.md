@@ -31,7 +31,6 @@ impl BackgroundJob for SendEmailJob {
     const JOB_TYPE: &'static str = "send_email";
     const PRIORITY: i16 = 10;
     const DEDUPLICATED: bool = false;
-    const QUEUE: &'static str = "emails";
 
     type Context = AppContext;
 
@@ -46,16 +45,17 @@ impl BackgroundJob for SendEmailJob {
 ### Running the Worker
 
 ```rust,ignore
-use workers::Runner;
+use workers::{Runner, Queue};
 use std::time::Duration;
 
 let runner = Runner::new(connection_pool, app_context)
-    .register_job_type::<SendEmailJob>()
-    .configure_queue("emails", |queue| {
-        queue.num_workers(2)
-             .poll_interval(Duration::from_secs(5))
-             .jitter(Duration::from_millis(500))
-    });
+    .add_queue(
+        Queue::named("emails")
+            .register::<SendEmailJob>()
+            .num_workers(2)
+            .poll_interval(Duration::from_secs(5))
+            .jitter(Duration::from_millis(500))
+    );
 
 let handle = runner.start();
 handle.wait_for_shutdown().await;
@@ -70,7 +70,7 @@ let job = SendEmailJob {
     body: "Thanks for signing up!".to_string(),
 };
 
-job.enqueue(&mut conn).await?;
+job.enqueue(&pool).await?;
 ```
 
 ## Configuration
@@ -174,24 +174,25 @@ cargo run --example batch
 By default, successfully completed jobs are deleted from the database. However, you can configure jobs to be archived instead, which moves them to an archive table for debugging, auditing, and potential replay.
 
 ```rust,ignore
-use workers::Runner;
-use runner::ArchivalPolicy;
+use workers::{Runner, Queue, ArchivalPolicy};
 
 let runner = Runner::new(pool, context)
-    .register_job_type::<MyJob>()
-    .configure_queue("important", |queue| {
-        queue.archive(ArchivalPolicy::Always)  // Enable archiving
-    });
+    .add_queue(
+        Queue::named("important")
+            .register::<MyJob>()
+            .archive(ArchivalPolicy::Always)  // Enable archiving
+    );
 
 // We can get much more fine-grained control by using a predicate function:
 let runner = Runner::new(pool, context)
-    .register_job_type::<MyJob>()
-    .configure_queue("fails_sometimes", |queue| {
-        queue.archive(ArchivalPolicy::If(|job, _ctx| {
-            // Archive only jobs that had to retry
-            job.retries > 0
-        }))
-    });
+    .add_queue(
+        Queue::named("fails_sometimes")
+            .register::<MyJob>()
+            .archive(ArchivalPolicy::If(|job, _ctx| {
+                // Archive only jobs that had to retry
+                job.retries > 0
+            }))
+    );
 ```
 
 To query archived jobs:
@@ -239,20 +240,35 @@ Each configured job type will start a background task with its own timer that pe
 
 ```rust,ignore
 use workers::{ArchiveCleanerBuilder, CleanupConfiguration, CleanupPolicy};
+use chrono::TimeDelta;
 use std::time::Duration;
 
-let cleaner = ArchiveCleanerBuilder::new()
+ArchiveCleanerBuilder::new()
     .configure::<MyJob>(CleanupConfiguration {
         cleanup_every: Duration::from_secs(60), // Run cleanup every 60 seconds
         policy: CleanupPolicy::MaxCount(1000),  // Keep only the latest 1000 archived jobs
     })
     .run(&pool);
 
-// Do whatever else...
+// Alternative policies:
+// - MaxAge: Remove jobs older than a specific duration
+ArchiveCleanerBuilder::new()
+    .configure::<MyJob>(CleanupConfiguration {
+        cleanup_every: Duration::from_secs(3600),
+        policy: CleanupPolicy::MaxAge(TimeDelta::days(30)),  // Remove jobs older than 30 days
+    })
+    .run(&pool);
 
-// You can manually stop the cleaner when needed:
-cleaner.stop();
-// or just let it fall out of scope and be aborted automatically.
+// - Retain: Keep at least N jobs, but remove older ones beyond a certain age
+ArchiveCleanerBuilder::new()
+    .configure::<MyJob>(CleanupConfiguration {
+        cleanup_every: Duration::from_secs(3600),
+        policy: CleanupPolicy::Retain {
+            max_age: TimeDelta::days(7),
+            keep_at_least: 100,  // Always keep at least 100 jobs, even if older than 7 days
+        },
+    })
+    .run(&pool);
 ```
 
 ## Database Setup
@@ -302,12 +318,16 @@ The workers poll the database for new jobs at regular intervals (configurable vi
 
 **Tuning Poll Intervals:**
 ```rust,ignore
-.configure_queue("low_priority", |queue| {
-    queue.poll_interval(Duration::from_secs(30))  // Less frequent polling
-})
-.configure_queue("urgent", |queue| {
-    queue.poll_interval(Duration::from_millis(100))  // More frequent polling
-})
+.add_queue(
+    Queue::named("low_priority")
+        .register::<LowPriorityJob>()
+        .poll_interval(Duration::from_secs(30))  // Less frequent polling
+)
+.add_queue(
+    Queue::named("urgent")
+        .register::<UrgentJob>()
+        .poll_interval(Duration::from_millis(100))  // More frequent polling
+)
 ```
 
 ### Why Use Polling Instead of LISTEN/NOTIFY?

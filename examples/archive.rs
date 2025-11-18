@@ -20,7 +20,8 @@ use testcontainers_modules::postgres::Postgres;
 use tracing::{debug, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use workers::{
-    ArchivalPolicy, ArchiveQuery, BackgroundJob, Runner, archived_job_count, get_archived_jobs,
+    ArchivalPolicy, ArchiveQuery, BackgroundJob, Queue, Runner, archived_job_count,
+    get_archived_jobs,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -127,14 +128,14 @@ async fn main() -> Result<()> {
 
     // Create runner with archiving enabled for important jobs
     let runner = Runner::new(pool.clone(), ())
-        .register_job_type::<NotificationJob>()
-        .register_job_type::<PaymentJob>()
-        .configure_queue("default", |queue| {
-            queue
+        .add_queue(
+            Queue::named("notifications_payments")
+                .register::<NotificationJob>()
+                .register::<PaymentJob>()
                 .num_workers(2)
                 .poll_interval(Duration::from_millis(100))
-                .archive(ArchivalPolicy::Always) // Enable archiving for audit trail
-        })
+                .archive(ArchivalPolicy::Always), // Enable archiving for audit trail
+        )
         .shutdown_when_queue_empty();
 
     // Enqueue some notification jobs
