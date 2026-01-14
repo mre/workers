@@ -109,6 +109,7 @@ impl<Context: Clone + Send + Sync + 'static> Runner<Context, Configured> {
                     shutdown_when_queue_empty: self.shutdown_when_queue_empty,
                     poll_interval: queue.poll_interval,
                     jitter: queue.jitter,
+                    timeout: queue.timeout,
                     archive_completed_jobs: queue.archive_completed_jobs.clone(),
                 };
 
@@ -171,6 +172,7 @@ pub struct Queue<Context: Clone + Send + Sync + 'static, State = Unconfigured> {
     num_workers: usize,
     poll_interval: Duration,
     jitter: Duration,
+    timeout: Option<Duration>,
     archive_completed_jobs: ArchivalPolicy<Context>,
     _state: PhantomData<State>,
 }
@@ -183,6 +185,7 @@ impl<Context: Clone + Send + Sync + 'static> Default for Queue<Context, Unconfig
             num_workers: 1,
             poll_interval: DEFAULT_POLL_INTERVAL,
             jitter: DEFAULT_JITTER,
+            timeout: None,
             archive_completed_jobs: ArchivalPolicy::default(),
             _state: PhantomData,
         }
@@ -224,6 +227,18 @@ impl<Context: Clone + Send + Sync + 'static, State> Queue<Context, State> {
         self
     }
 
+    /// Set a timeout for all jobs in this queue.
+    ///
+    /// If set, jobs that run longer than this duration will be cancelled
+    /// and marked as failed, then retried according to the retry policy.
+    ///
+    /// Jobs in the same queue typically interact with the same upstream
+    /// resource, so they should share timeout characteristics.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
     /// Set whether completed jobs should be archived instead of deleted.
     pub fn archive(mut self, policy: ArchivalPolicy<Context>) -> Self {
         self.archive_completed_jobs = policy;
@@ -239,6 +254,7 @@ impl<Context: Clone + Send + Sync + 'static, State> Queue<Context, State> {
             num_workers: self.num_workers,
             poll_interval: self.poll_interval,
             jitter: self.jitter,
+            timeout: self.timeout,
             archive_completed_jobs: self.archive_completed_jobs,
             _state: PhantomData,
         }

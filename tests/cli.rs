@@ -941,3 +941,156 @@ async fn archive_conditionally() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(100);
+
+#[tokio::test]
+async fn job_timeout_triggers_failure_and_retry() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct TimeoutJob;
+
+    impl BackgroundJob for TimeoutJob {
+        const JOB_TYPE: &'static str = "timeout_test";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            // Sleep longer than the timeout
+            tokio::time::sleep(DEFAULT_TIMEOUT * 2).await;
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    let runner = test_utils::create_test_runner(pool.clone(), ()).add_queue(
+        Queue::default()
+            .register::<TimeoutJob>()
+            .timeout(DEFAULT_TIMEOUT),
+    );
+
+    let job_id = assert_some!(TimeoutJob.enqueue(&pool).await?);
+
+    let runner = runner.start();
+    runner.wait_for_shutdown().await;
+
+    // Job should still exist (not deleted) because it failed
+    assert!(job_exists(job_id, &pool).await?);
+
+    // Retry counter should be incremented
+    let retries = sqlx::query_scalar::<_, i32>("SELECT retries FROM background_jobs WHERE id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(retries, 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn job_without_timeout_runs_indefinitely() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct SlowJob;
+
+    impl BackgroundJob for SlowJob {
+        const JOB_TYPE: &'static str = "slow_test";
+        // No timeout set
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            // Sleep for a relatively long time, but not forever
+            tokio::time::sleep(DEFAULT_TIMEOUT * 2).await;
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    let runner = test_utils::create_test_runner(pool.clone(), ())
+        .add_queue(Queue::default().register::<SlowJob>());
+
+    let job_id = assert_some!(SlowJob.enqueue(&pool).await?);
+
+    let runner = runner.start();
+    runner.wait_for_shutdown().await;
+
+    // Job should be deleted (successfully completed)
+    assert!(!job_exists(job_id, &pool).await?);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn job_with_timeout_completes_before_timeout() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct FastJob;
+
+    impl BackgroundJob for FastJob {
+        const JOB_TYPE: &'static str = "fast_timeout_test";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            // Complete quickly, well before the timeout
+            tokio::time::sleep(DEFAULT_TIMEOUT / 2).await;
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    let runner = test_utils::create_test_runner(pool.clone(), ()).add_queue(
+        Queue::default()
+            .register::<FastJob>()
+            .timeout(DEFAULT_TIMEOUT),
+    );
+
+    let job_id = assert_some!(FastJob.enqueue(&pool).await?);
+
+    let runner = runner.start();
+    runner.wait_for_shutdown().await;
+
+    // Job should be deleted (successfully completed)
+    assert!(!job_exists(job_id, &pool).await?);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn timeout_job_archived_after_success() -> anyhow::Result<()> {
+    #[derive(Serialize, Deserialize)]
+    struct QuickJob;
+
+    impl BackgroundJob for QuickJob {
+        const JOB_TYPE: &'static str = "quick_archived_test";
+        type Context = ();
+
+        async fn run(&self, _ctx: Self::Context) -> anyhow::Result<()> {
+            // Complete quickly
+            Ok(())
+        }
+    }
+
+    let (pool, _container) = test_utils::setup_test_db().await?;
+
+    // Configure runner with archiving enabled and timeout
+    let runner = Runner::new(pool.clone(), ())
+        .add_queue(
+            Queue::default()
+                .register::<QuickJob>()
+                .timeout(DEFAULT_TIMEOUT)
+                .archive(ArchivalPolicy::Always),
+        )
+        .shutdown_when_queue_empty();
+
+    let job_id = assert_some!(QuickJob.enqueue(&pool).await?);
+
+    let runner = runner.start();
+    runner.wait_for_shutdown().await;
+
+    // Job should be deleted from active queue
+    assert!(!job_exists(job_id, &pool).await?);
+
+    // Job should be archived
+    assert_eq!(archived_job_count(&pool).await?, 1);
+
+    Ok(())
+}

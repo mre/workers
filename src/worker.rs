@@ -21,6 +21,7 @@ pub(crate) struct Worker<Context> {
     pub(crate) shutdown_when_queue_empty: bool,
     pub(crate) poll_interval: Duration,
     pub(crate) jitter: Duration,
+    pub(crate) timeout: Option<Duration>,
     pub(crate) archive_completed_jobs: ArchivalPolicy<Context>,
 }
 
@@ -106,17 +107,40 @@ impl<Context: Clone + Send + Sync + 'static> Worker<Context> {
         debug!("Running job…");
         let should_archive = self.should_archive(&job, &context);
 
+        let timeout = self.timeout;
         let future = with_sentry_transaction(&job.job_type, async || {
             let run_task_fn = job_registry
                 .get(&job.job_type)
                 .ok_or_else(|| anyhow!("Unknown job type {}", job.job_type))?;
 
-            AssertUnwindSafe(run_task_fn(context, job.data))
-                .catch_unwind()
-                .await
-                .map_err(|e| try_to_extract_panic_info(&*e))
-                // TODO: Replace with flatten() once that stabilizes
-                .and_then(std::convert::identity)
+            let job_future = async {
+                AssertUnwindSafe(run_task_fn(context, job.data))
+                    // Catch unwinding panics while the future is polling
+                    // We do this to prevent the whole worker from crashing
+                    // Instead, we can mark the job as failed and continue with the next one
+                    .catch_unwind()
+                    .await
+                    .map_err(|e| try_to_extract_panic_info(&*e))
+                    .flatten()
+            };
+
+            // Apply timeout if configured for this queue
+            //
+            // IMPORTANT: Timeout behavior and cancel safety
+            //
+            // Jobs with timeouts MUST be designed with cancellation in mind:
+            // - Jobs should be idempotent (safe to run multiple times)
+            // - Avoid leaving shared state in invalid states across .await points
+            // - Don't hold locks across .await points where cancellation could
+            //   leave data in an inconsistent state
+            if let Some(timeout_duration) = timeout {
+                match tokio::time::timeout(timeout_duration, job_future).await {
+                    Ok(result) => result,
+                    Err(_) => Err(anyhow!("Job timed out after {timeout_duration:?}")),
+                }
+            } else {
+                job_future.await
+            }
         });
 
         let result = future
