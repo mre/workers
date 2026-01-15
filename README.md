@@ -9,6 +9,7 @@ A robust async PostgreSQL-backed background job processing system. It features:
 - **Job deduplication** to prevent duplicate work
 - **Multiple job queues** with independent worker pools
 - **Automatic retry** with exponential backoff for failed jobs
+- **Per-job timeouts** to prevent long-running jobs from blocking the queue
 - **Graceful shutdown** and queue management
 - **Error tracking** with Sentry integration
 
@@ -73,6 +74,33 @@ let job = SendEmailJob {
 job.enqueue(&pool).await?;
 ```
 
+### Job Timeouts
+
+Prevent long-running jobs from blocking the queue by configuring timeouts at the queue level.
+Jobs that exceed their queue's timeout are cancelled and marked as failed, then retried according to the retry policy.
+
+```rust,ignore
+use std::time::Duration;
+
+let runner = Runner::new(pool, context)
+    .add_queue(
+        Queue::named("github")
+            .register::<FetchRepoJob>()
+            // All jobs in this queue timeout after 30s
+            .timeout(Duration::from_secs(30))  
+    );
+```
+
+
+> [!NOTE]
+> When a job times out:
+> - Jobs are not forcefully interrupted. They stop at the next `.await`
+> - Timed-out jobs will be retried from the beginning, not resumed (!)
+> - Jobs must be designed to be idempotent or handle partial execution safely
+> - Avoid holding Tokio mutexes across `.await` points where cancellation could leave shared state inconsistent
+
+See the [timeout](examples/timeout.rs) example for details on cancel safety considerations.
+
 ## Configuration
 
 ### Job Properties
@@ -80,7 +108,6 @@ job.enqueue(&pool).await?;
 - **`JOB_TYPE`**: Unique identifier for the job type
 - **`PRIORITY`**: Execution priority (higher values = higher priority)
 - **`DEDUPLICATED`**: Whether to prevent duplicate jobs with identical data
-- **`QUEUE`**: Queue name for job execution (defaults to "default")
 
 ### Queue Configuration
 
@@ -98,6 +125,7 @@ Each queue can be tuned independently based on the resource constraints and thro
 - **Worker count**: Number of concurrent workers per queue
 - **Poll interval**: How often workers check for new jobs
 - **Jitter**: Random time added to poll intervals to reduce thundering herd effects (default: 100ms)
+- **Timeout**: Optional duration after which jobs will be cancelled and marked as failed (applies to all jobs in the queue)
 - **Shutdown behavior**: Whether to stop when queue is empty
 - **Archive completed jobs**: Whether to archive successful jobs instead of deleting them
 
